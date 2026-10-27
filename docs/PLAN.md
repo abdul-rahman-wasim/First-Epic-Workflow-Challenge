@@ -1,6 +1,6 @@
 # Build plan — Altair group meetups slice
 
-Status: **draft v2 for review**. Decisions marked **[DECIDE]** need sign-off before the matching phase starts.
+Status: **v4, decisions resolved 2026-10-27**: approximate area (fixed grid) · write model C · Edge Functions · Android phone with Expo Go · hosted Supabase via CLI.
 
 ## 1. What we are building
 
@@ -18,7 +18,7 @@ Out of scope: sign-up, web, group management, notifications, live location, edit
 |---|---|---|
 | DB | **Hosted Supabase (free tier), managed with the Supabase CLI 2.122 via `npx`** | No Docker, which saves RAM on the dev machine. The CLI still owns migrations: `link`, `db push --include-seed`, `db reset --linked` |
 | Contract | `packages/shared`, Zod 4.6, TS source imported directly (no build step) | One module that both the server and Metro resolve |
-| Write layer | **[DECIDE]** Hono 4 app deployed as a **Supabase Edge Function** (`functions deploy --use-api`, no Docker), the same Hono app run in-process on Node for tests | Phone reaches it over the internet (no LAN/firewall setup); reviewer runs no server; tests stay fast. Fallback: run the same Hono app on Node (`@hono/node-server`) |
+| Write layer | Hono 4 app deployed as a **Supabase Edge Function** (`functions deploy --use-api`, no Docker), the same Hono app run in-process on Node for tests | Phone reaches it over the internet (no LAN/firewall setup); reviewer runs no server; tests stay fast. Fallback: run the same Hono app on Node (`@hono/node-server`) |
 | App | Expo SDK 58, Expo Router, supabase-js 2.118, TanStack Query, `react-native-maps` | **Runs in Expo Go on your phone.** No emulator, no map key |
 | Tests | Vitest 5 against the hosted project | Real RLS, real JWTs, no mocks |
 | Workspace | pnpm workspaces (`node-linker=hoisted` for Metro) | One lockfile, shared package linked |
@@ -51,7 +51,7 @@ rsvps
   index (user_id)
 ```
 
-## 4. Meeting-point visibility **[DECIDE — your product call]**
+## 4. Meeting-point visibility (decided: approximate area)
 
 Recommendation: **approximate area until RSVP, computed by snapping to a fixed grid** (changed from the random offset in v1, see the small-town analysis below).
 
@@ -104,7 +104,13 @@ Alternative: exact location for all members. Simpler, but the spec then requires
 
 Membership checks go through `private.is_group_member(group_id)` (security definer, `search_path = ''`, in a non-exposed schema), using the `(select auth.uid())` caching pattern.
 
-**Writes: [DECIDE] B or C.** In both, the app has no write path except the endpoint.
+**Writes: decided, Option C.** In B and C alike, the app has no write path except the endpoint.
+
+*Alternatives considered and rejected:*
+- **A:** RLS write grants to `authenticated`. The app could skip Zod.
+- **B:** secret key plus functions. The service role bypasses RLS, so cancel wouldn't be RLS-enforced (details below).
+- **Server-minted JWT** with `role: meetup_writer`, sent through supabase-js. Same RLS guarantees as C without a direct DB connection, but it needs a custom asymmetric signing key imported into the project. That's fragile to set up and to explain, and a leaked signing key forges any user.
+- **Data API off, all reads through endpoints too.** The smallest attack surface, since the app never touches the DB directly. But it means about 4 extra read endpoints and the same RLS underneath. A good production hardening step; overkill for the slice. Goes in NOTE.md.
 
 *Option B: secret key + DB functions.* Write functions take `p_actor uuid`; execute is granted only to `service_role`. The server verifies the JWT, validates with Zod, and calls the function with the secret key.
 - Disadvantage 1, the big one: the brief says "enforce access with **row-level security** … only the creator cancels". The service role **bypasses RLS**, so the creator rule would live in function code, not in a policy. A grader can read that as "not RLS".
@@ -198,10 +204,13 @@ Before each PR: `security-review`, `code-review`, green tests, Conventional Comm
 
 ## 11. What you need to do (I can't run browser logins)
 
-1. Create a free Supabase project. Note the project ref and the DB password.
+1. Create a free Supabase project. Note the project ref and the DB password. Project options:
+   - **Enable Data API: ON.** The app reads with supabase-js under RLS.
+   - **Automatically expose new tables: OFF.** We grant per table and per column in migrations. With it ON, `users` would be granted on *all* columns, `home_lat/home_lng` included, so once a `users` select policy exists the home columns become readable.
+   - **Enable automatic RLS: ON.** A safety net: any table we forget gets RLS (deny by default). Our migrations also enable RLS explicitly.
 2. Run `npx supabase login` once in your terminal (browser flow), then `npx supabase link --project-ref <ref>` from the repo root after `feat/db-schema` adds `supabase/config.toml`.
 3. Install **Expo Go** on your phone, matching SDK 58 (the current store version), and put the phone on the same Wi-Fi as the laptop.
-4. Tell me the phone OS (iOS or Android). It decides the map provider (Apple Maps or Google Maps); both work in Expo Go.
+4. Phone: **Android**, so maps are Google Maps through `react-native-maps` in Expo Go (no key needed in Expo Go).
 
 ### Edge Function vs Node Hono
 
