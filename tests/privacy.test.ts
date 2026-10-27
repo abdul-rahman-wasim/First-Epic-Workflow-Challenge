@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { EXACT, G, get, HOME_VALUES, insertMeetup, M, metersBetween, ownerSql, responses, rsvp, type Persona } from './helpers.ts';
+import {
+  call,
+  cancel,
+  EXACT,
+  G,
+  get,
+  HOME_VALUES,
+  insertMeetup,
+  M,
+  metersBetween,
+  ownerSql,
+  PERSONAS,
+  responses,
+  rsvp,
+  withdraw,
+} from './helpers.ts';
 
 describe('approximate area (computed in the DB)', () => {
   it.each(Object.keys(EXACT))('%s: ≥ 300 m, not centered on the exact point, exact point inside', async (id) => {
@@ -31,17 +46,28 @@ describe('approximate area (computed in the DB)', () => {
 });
 
 describe('home location never leaves the server', () => {
-  const personas: Persona[] = ['avery', 'jordan', 'sam', 'riley', 'morgan', 'casey', 'quinn', 'taylor'];
-
   it('no response from any read or write contains a home field or a seeded home value', async () => {
-    for (const p of personas) {
-      await get(p, '/groups');
-      for (const g of Object.values(G)) await get(p, `/groups/${g}/meetups`);
-      for (const id of Object.values(M)) await get(p, `/meetups/${id}`);
-    }
+    responses.length = 0;
+    const paths = ['/groups', ...Object.values(G).map((g) => `/groups/${g}/meetups`), ...Object.values(M).map((id) => `/meetups/${id}`)];
+    await Promise.all(PERSONAS.map(async (p) => { for (const path of paths) await get(p, path); }));
+    // Every write endpoint, including ones whose responses list attendees.
+    const created = await call('sam', 'POST', '/meetups', {
+      groupId: G.maple,
+      title: 'Privacy walk',
+      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+      placeName: 'Fountain plaza, Town Green',
+      lat: 39.999134,
+      lng: -99.999461,
+    });
+    await rsvp('riley', created.body.meetup.id);
     await rsvp('sam', M.weeknight);
+    await withdraw('riley', M.saturday);
+    await cancel('sam', created.body.meetup.id);
+    await rsvp('casey', M.riverside);
+    expect(responses.length).toBeGreaterThan(50);
+
     const all = responses.join('\n');
     expect(all).not.toMatch(/home_?lat|home_?lng/i);
     for (const v of HOME_VALUES) expect(all).not.toContain(v);
-  });
+  }, 120_000); // ~60 calls to the hosted project
 });

@@ -41,12 +41,6 @@ importers:
 
   tests:
     dependencies:
-      '@altair/server':
-        specifier: workspace:*
-        version: link:../server
-      '@altair/shared':
-        specifier: workspace:*
-        version: link:../packages/shared
       postgres:
         specifier: 3.4.9
         version: 3.4.9

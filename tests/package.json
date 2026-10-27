@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@altair/server": "workspace:*",
-    "@altair/shared": "workspace:*",
     "postgres": "3.4.9"
   }
 }

@@ -1,7 +1,7 @@
 // Proves the database enforces access by itself: raw SQL as meetup_api, no API code involved.
 import { describe, expect, it } from 'vitest';
 import { env } from './env.ts';
-import { asPersona, M, token, type Persona } from './helpers.ts';
+import { asPersona, M, PERSONAS, token, type Persona } from './helpers.ts';
 
 const view = (p: Persona | null) =>
   asPersona(p, async (tx) => ({
@@ -12,21 +12,22 @@ const view = (p: Persona | null) =>
   }));
 
 describe('RLS as meetup_api with each persona’s claims', () => {
-  it.each<[Persona | null, string[], string[]]>([
-    [null, [], []], // no claims: fails closed
-    ['taylor', [], []],
-    ['sam', [M.saturday, M.weeknight], []],
-    ['jordan', [M.saturday, M.weeknight], [M.saturday, M.weeknight]], // RSVP'd + creator
-    ['avery', [M.saturday, M.weeknight], [M.saturday]],
-    ['riley', [M.saturday, M.weeknight, M.riverside], [M.saturday]],
-  ])('%s sees exactly the allowed rows', async (p, meetups, exact) => {
-    const v = await view(p);
-    expect(v.meetups).toEqual([...meetups].sort());
-    expect(v.exact).toEqual([...exact].sort());
-    if (!meetups.length) expect(v).toMatchObject({ rsvps: 0, groups: 0 });
+  // [persona, visible meetups, visible exact points, visible RSVP rows, visible groups]
+  it.each<[Persona | null, string[], string[], number, number]>([
+    [null, [], [], 0, 0], // no claims: fails closed
+    ['taylor', [], [], 0, 0],
+    ['sam', [M.saturday, M.weeknight], [], 2, 1],
+    ['jordan', [M.saturday, M.weeknight], [M.saturday, M.weeknight], 2, 1], // RSVP'd + creator
+    ['avery', [M.saturday, M.weeknight], [M.saturday], 2, 1],
+    ['riley', [M.saturday, M.weeknight, M.riverside], [M.saturday], 3, 2],
+    ['morgan', [M.riverside], [M.riverside], 1, 1],
+    ['casey', [M.riverside], [M.riverside], 1, 1],
+    ['quinn', [M.riverside], [], 1, 1],
+  ])('%s sees exactly the allowed rows', async (p, meetups, exact, rsvps, groups) => {
+    expect(await view(p)).toEqual({ meetups: [...meetups].sort(), exact: [...exact].sort(), rsvps, groups });
   });
 
-  it.each<Persona>(['taylor', 'sam', 'jordan', 'avery', 'riley'])('home location is unreadable for %s', async (p) => {
+  it.each<Persona>(PERSONAS)('home location is unreadable for %s', async (p) => {
     await expect(asPersona(p, (tx) => tx`select home_lat, home_lng from public.users`)).rejects.toThrow(
       /permission denied/,
     );

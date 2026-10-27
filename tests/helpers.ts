@@ -2,6 +2,8 @@ import { createApp } from '../server/src/app.ts';
 import { createVerifier, type Claims } from '../server/src/auth.ts';
 import { asUser, type Tx } from '../server/src/db.ts';
 import { SUPABASE_ROOT_CA } from '../server/src/supabase-ca.ts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { env, projectRef } from './env.ts';
 
@@ -33,8 +35,18 @@ export const EXACT = {
   [M.riverside]: { placeName: 'Boathouse lot, Riverside Path', lat: 39.985239, lng: -100.009683 },
 };
 
-// Seeded private home coordinates: must never appear in any response.
-export const HOME_VALUES = ['40.004812', '-99.993127', '40.007395', '-99.98864', '39.998263', '-99.995418'];
+// Seeded private home coordinates of all 8 personas: must never appear in any response.
+export const HOME_VALUES = [
+  '40.004812', '-99.993127', // avery
+  '40.007395', '-99.98864', // jordan
+  '39.998263', '-99.995418', // sam
+  '40.002957', '-100.006284', // riley
+  '39.993481', '-100.011736', // morgan
+  '39.989624', '-100.004952', // casey
+  '40.010538', '-100.014867', // taylor
+  '39.996107', '-100.017392', // quinn
+];
+export const PERSONAS = Object.keys(U) as Persona[];
 
 // ---------- connections ----------
 
@@ -98,26 +110,29 @@ export const asPersona = <T>(p: Persona | null, fn: (tx: Tx) => Promise<T>) =>
 
 // ---------- fixtures (as owner) ----------
 
-const MEMBERSHIPS: [string, string][] = [
-  [G.maple, U.avery], [G.maple, U.jordan], [G.maple, U.sam], [G.maple, U.riley],
-  [G.riverside, U.riley], [G.riverside, U.morgan], [G.riverside, U.casey], [G.riverside, U.quinn],
-];
+// Reset runs the real seed's statements, so the test state can't drift from supabase/seed.sql.
+const seed = readFileSync(fileURLToPath(new URL('../supabase/seed.sql', import.meta.url)), 'utf8');
+const between = (from: string, to: string) => {
+  const start = seed.indexOf(from);
+  const end = seed.indexOf(to, start + from.length);
+  if (start < 0 || end < 0) throw new Error(`seed.sql markers not found: ${from} … ${to}`);
+  return seed.slice(start, end);
+};
+const statements = (sql: string) =>
+  sql
+    .split(/;\s*$/m)
+    .map((s) => s.replace(/^\s*--.*$/gm, '').trim())
+    .filter((s) => s && !/^(begin|commit)$/i.test(s));
+
+const SEED_MEMBERSHIPS = statements(between('-- PART 1d', '-- PART 2:'));
+const SEED_MEETUPS = statements(between('\nbegin;', '\ncommit;'));
 
 // Back to the seed state: memberships, the three reference meetups and their RSVPs.
 export async function resetFixtures() {
   await ownerSql.begin(async (tx) => {
     await tx`truncate public.meetups cascade`;
     await tx`delete from public.group_memberships`;
-    for (const [g, u] of MEMBERSHIPS) await tx`insert into public.group_memberships (group_id, user_id) values (${g}, ${u})`;
-    await tx`insert into public.meetups (id, group_id, created_by, title, starts_at) values
-      (${M.saturday}, ${G.maple}, ${U.avery}, 'Saturday morning loop', now() + interval '7 days'),
-      (${M.weeknight}, ${G.maple}, ${U.jordan}, 'Weeknight short walk', now() + interval '10 days'),
-      (${M.riverside}, ${G.riverside}, ${U.morgan}, 'Riverside sunrise walk', now() + interval '8 days')`;
-    for (const [id, l] of Object.entries(EXACT)) {
-      await tx`insert into public.meetup_locations (meetup_id, place_name, lat, lng) values (${id}, ${l.placeName}, ${l.lat}, ${l.lng})`;
-    }
-    await tx`insert into public.rsvps (meetup_id, user_id) values
-      (${M.saturday}, ${U.jordan}), (${M.saturday}, ${U.riley}), (${M.riverside}, ${U.casey})`;
+    for (const s of [...SEED_MEMBERSHIPS, ...SEED_MEETUPS]) await tx.unsafe(s);
   });
 }
 

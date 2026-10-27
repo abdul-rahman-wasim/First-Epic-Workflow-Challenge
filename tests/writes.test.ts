@@ -22,15 +22,16 @@ describe('create', () => {
     expect(row!.created_by).toBe(U.sam);
   });
 
-  it.each([
-    ['a past start', { startsAt: inHours(-1) }],
-    ['a start equal to now', { startsAt: new Date().toISOString() }],
-    ['a start without timezone', { startsAt: '2031-01-01T10:00:00' }],
-    ['a blank title', { title: '   ' }],
-    ['an 81-character title', { title: 'x'.repeat(81) }],
-    ['a client-supplied creator', { createdBy: U.avery }],
+  // Patches are built when the test runs, so "now" is the moment of the request.
+  it.each<[string, () => object]>([
+    ['a past start', () => ({ startsAt: inHours(-1) })],
+    ['a start of right now', () => ({ startsAt: new Date().toISOString() })],
+    ['a start without timezone', () => ({ startsAt: '2031-01-01T10:00:00' })],
+    ['a blank title', () => ({ title: '   ' })],
+    ['an 81-character title', () => ({ title: 'x'.repeat(81) })],
+    ['a client-supplied creator', () => ({ createdBy: U.avery })],
   ])('rejects %s with 400', async (_, patch) => {
-    const r = await create('sam', { ...draft, ...patch });
+    const r = await create('sam', { ...draft, startsAt: inHours(24), ...patch() });
     expect(r.status).toBe(400);
     expect(r.body.error.code).toBe('invalid_input');
   });

@@ -40,9 +40,12 @@ describe('timing', () => {
   it('E11: an attendee can withdraw after the start', async () => {
     // Real sequence: RSVP before the start, then withdraw after it. (The DB refuses even the
     // owner an RSVP on a started meetup, so the fixture can't shortcut this.)
-    const soon = await insertMeetup({ group: G.maple, creator: 'avery', startsAt: '4 seconds' });
+    await Promise.all([token('sam'), token('jordan')]); // sign in first: keep the window for the RSVP
+    const soon = await insertMeetup({ group: G.maple, creator: 'avery', startsAt: '12 seconds' });
     expect((await rsvp('sam', soon)).body.meetup.hasRsvp).toBe(true);
-    await new Promise((r) => setTimeout(r, 5_000));
+    const [left] = await ownerSql<{ s: number }[]>`
+      select greatest(0, extract(epoch from starts_at - now()))::float8 as s from public.meetups where id = ${soon}`;
+    await new Promise((r) => setTimeout(r, left!.s * 1000 + 1_000));
     expect((await rsvp('jordan', soon)).status).toBe(409); // started: no new RSVPs
     expect((await withdraw('sam', soon)).body.meetup.hasRsvp).toBe(false);
   });
@@ -59,10 +62,12 @@ describe('probing and tokens', () => {
   it('E8: an outsider gets the same 404 for a started, a cancelled and a missing meetup', async () => {
     const started = await insertMeetup({ group: G.maple, creator: 'avery', startsAt: '-1 hour' });
     await cancel('avery', M.saturday);
-    const bodies = await Promise.all(
-      [started, M.saturday, '00000000-0000-4000-8000-000000000000'].map(async (id) => (await rsvp('taylor', id)).text),
+    const res = await Promise.all(
+      [started, M.saturday, '00000000-0000-4000-8000-000000000000'].map((id) => rsvp('taylor', id)),
     );
-    expect(new Set(bodies).size).toBe(1);
+    expect(res.map((r) => r.status)).toEqual([404, 404, 404]);
+    expect(res[0]!.body.error.code).toBe('not_found');
+    expect(new Set(res.map((r) => r.text)).size).toBe(1);
   });
 
   it('E9: a member who can see a meetup but did not create it gets 403 on cancel', async () => {
