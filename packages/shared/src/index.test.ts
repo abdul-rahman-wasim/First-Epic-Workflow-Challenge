@@ -4,7 +4,7 @@ import { CreateMeetupInput, MeetupDetail } from './index';
 const valid = {
   groupId: 'b2000000-0000-4000-8000-000000000001',
   title: '  Evening loop  ',
-  startsAt: new Date(Date.now() + 3_600_000).toISOString(),
+  startsAt: new Date(Date.now() + 24 * 3_600_000).toISOString(),
   placeName: 'Fountain plaza, Town Green',
   lat: 39.999134,
   lng: -99.999461,
@@ -18,6 +18,7 @@ describe('CreateMeetupInput', () => {
 
   it.each([
     ['past start', { startsAt: new Date(Date.now() - 60_000).toISOString() }],
+    ['start inside the 3-hour lead time', { startsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }],
     ['start without timezone', { startsAt: '2030-01-01T10:00:00' }],
     ['whitespace-only title', { title: '   ' }],
     ['81-char title', { title: 'x'.repeat(81) }],
@@ -28,6 +29,22 @@ describe('CreateMeetupInput', () => {
     ['client-supplied creator', { createdBy: 'a1000000-0000-4000-8000-000000000001' }],
   ])('rejects %s', (_, patch) => {
     expect(CreateMeetupInput.safeParse({ ...valid, ...patch }).success).toBe(false);
+  });
+
+  it('a malformed start gets one clear message, not "must be in the future" too', () => {
+    const r = CreateMeetupInput.safeParse({ ...valid, startsAt: 'tomorrow' });
+    expect(r.error!.issues.map((i) => i.message)).toEqual(['Pick a start date and time']);
+  });
+
+  it('explains every problem in plain words', () => {
+    const r = CreateMeetupInput.safeParse({ groupId: valid.groupId, title: ' ', startsAt: valid.startsAt, placeName: '' });
+    const byField = Object.fromEntries(r.error!.issues.map((i) => [String(i.path[0]), i.message]));
+    expect(byField).toEqual({
+      title: 'Add a title',
+      placeName: 'Name the meeting point',
+      lat: 'Tap the map to place the meeting point',
+      lng: 'Tap the map to place the meeting point',
+    });
   });
 });
 

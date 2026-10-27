@@ -81,6 +81,15 @@ Each was rejected for the reason given.
   - JWTs are restricted to `ES256`/`RS256`.
   - I also enabled SSL enforcement on the database, so non-TLS clients are refused server-side.
 - **Test phase: a failing test was the fixture's fault.** The first run had 66/67 green. The "withdraw after start" test inserted an RSVP *as the owner* on a started meetup, and the DB refused it: the RSVP lock trigger applies to the owner too. The fixture now follows the real sequence (RSVP before the start, withdraw after), and a separate test asserts that even the owner can't RSVP to a started meetup.
+- **App phase: phone testing drove UX changes.** I tested every screen on my Android phone and asked for:
+  - plain-language errors everywhere (no Zod/DB wording, now a project rule)
+  - a show/hide password toggle and an animated sign-in error
+  - Hosting/Going tags
+  - a 3-hour minimum lead time for new meetups (the shared contract and the API, on the DB clock)
+  - place suggestions as you type, which fill the name and drop the pin
+- **Geocoding choice.** Suggestions come from Photon (OpenStreetMap data), not the phone's geocoder: on Android the phone's geocoder needs the location permission, and this feature should never ask where you are. Only the typed public place name is sent.
+- **Geocoding catches.** A first "Find on map" button used Nominatim, but Nominatim's usage policy forbids autocomplete, hence Photon. Also checked by hand: an unbounded search for "Linden Park" jumped to Adelaide, Australia, so results are bounded to ~50 km around the map view.
+- **Process slip.** One PR (#8) was merged by the agent, not by me: a create-and-merge command executed even though I interrupted it. The changes were already approved commit by commit, and I reviewed the merged PR afterwards. The agent now only opens PRs.
 - **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first
@@ -90,3 +99,5 @@ Each was rejected for the reason given.
 ## Spec pushback
 
 *(to fill: see docs/PLAN.md §14 for candidates)*
+
+- **Joining a group has no path.** Group and membership management is out of scope, so a user in no group (Taylor) can only see an empty state. Found in phone testing. A real launch needs an invite or join-request flow, approved by a group member, before the meetup feature is useful to newcomers. The slice's empty state says "ask a group organiser to add you" instead of leaving a dead end.

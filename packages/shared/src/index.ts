@@ -4,11 +4,20 @@ import { z } from 'zod';
 
 // ---------- primitives ----------
 
-export const Latitude = z.number().min(-90).max(90);
-export const Longitude = z.number().min(-180).max(180);
+// Messages are user-facing: the app and the API show the same wording.
+const pinMissing = { error: (i: { input: unknown }) => (i.input === undefined ? 'Tap the map to place the meeting point' : 'Invalid meeting point') };
+const badPoint = { error: 'Invalid meeting point' };
+
+export const Latitude = z.number(pinMissing).min(-90, badPoint).max(90, badPoint);
+export const Longitude = z.number(pinMissing).min(-180, badPoint).max(180, badPoint);
 // ISO-8601 with an explicit offset ('Z' or ±hh:mm); a local time without zone is rejected.
-export const IsoDateTime = z.iso.datetime({ offset: true });
+export const IsoDateTime = z.iso.datetime({ offset: true, error: 'Pick a start date and time' });
 export const MeetupStatus = z.enum(['scheduled', 'cancelled']);
+
+// Product rule: a meetup must be announced this far ahead. The API re-checks it on the DB clock.
+export const MIN_LEAD_HOURS = 3;
+export const MIN_LEAD_MS = MIN_LEAD_HOURS * 3_600_000;
+export const MIN_LEAD_MESSAGE = `Start at least ${MIN_LEAD_HOURS} hours from now, so members have time to see it`;
 
 // ---------- requests ----------
 
@@ -21,12 +30,21 @@ export type MeetupIdParam = z.infer<typeof MeetupIdParam>;
 // Strict: unknown keys (e.g. createdBy, status) are rejected, not ignored.
 // The future-start rule uses the clock of whoever parses: authoritative on the server.
 export const CreateMeetupInput = z.strictObject({
-  groupId: z.uuid(),
-  title: z.string().trim().min(1).max(80),
-  startsAt: IsoDateTime.refine((v) => Date.parse(v) > Date.now(), {
-    message: 'Start time must be in the future',
+  groupId: z.uuid({ error: 'Pick a group' }),
+  title: z
+    .string({ error: 'Add a title' })
+    .trim()
+    .min(1, { error: 'Add a title' })
+    .max(80, { error: 'Keep the title to 80 characters or fewer' }),
+  // An unparseable value already has a format issue; don't add a lead-time message too.
+  startsAt: IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now() + MIN_LEAD_MS, {
+    error: MIN_LEAD_MESSAGE,
   }),
-  placeName: z.string().trim().min(1).max(120),
+  placeName: z
+    .string({ error: 'Name the meeting point' })
+    .trim()
+    .min(1, { error: 'Name the meeting point' })
+    .max(120, { error: 'Keep the place name to 120 characters or fewer' }),
   lat: Latitude,
   lng: Longitude,
 });
