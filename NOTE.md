@@ -62,7 +62,20 @@ Each was rejected for the reason given.
 
 ## What I directed, what I reviewed or fixed by hand
 
-*(to fill during the build)*
+*(being filled during the build)*
+
+**Database phase: what I caught or changed after the AI's first version**
+- **Random offset → grid.** The first proposal gave each meetup a random offset. I questioned how it behaves in small towns. That led to the overlap problem with recurring meetups (circles intersect at the real spot) and to the grid design, plus the k-anonymity section above.
+- **Leaving the group.** I asked what happens if a member RSVPs and then leaves the group. The first policy draft allowed "creator **or** RSVP", so a leaver kept the exact spot. Every rule now requires *current* membership, and leaving deletes that member's RSVPs, so rejoining doesn't restore access.
+- **Write model.** I rejected the service-role design (B) and then the `set role` design (C). That led to D: the API connects as a role that can't bypass RLS, so a coding mistake fails closed instead of running as superuser.
+- **Spike: `auth.uid()` unusable.** Hosted Supabase won't let `postgres` grant our role access to the `auth` schema (the grant silently did nothing). Policies use our own `private.uid()`, which reads the verified claims.
+- **Spike: pooler auth cache.** After a role is recreated or its password changes, the first pooler login fails once with `28P01` while Supavisor refreshes. The API retries once.
+- **Code review of the migration found and fixed** (follow-up migration `harden_meetups_access`):
+  - `private.uid()` threw on pooled connections once a previous request had set claims (the setting reverts to `''`, not NULL). That would have turned "no claims → zero rows" into 500 errors. Verified fixed on a real pooled connection.
+  - An RSVP could race a concurrent cancel and commit onto a cancelled meetup. A trigger now locks the meetup and membership rows and re-checks. Verified: the RSVP waited for the cancel, then was rejected.
+  - Supabase's default privileges would have exposed *future* public tables to user roles. They're revoked now.
+  - Smaller items: the creator check now requires membership; one definer function became invoker; the area math wraps at the antimeridian.
+- **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first
 

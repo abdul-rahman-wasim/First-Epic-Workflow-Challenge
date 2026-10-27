@@ -16,7 +16,7 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 
 ### Access control — enforced in the database
 - RLS on every table. Starter tables (`users`, `groups`, `group_memberships`) have RLS on with **no policies** — add only what the slice needs.
-- Anonymous access: denied everywhere. Policies target `authenticated` only.
+- Anonymous access: denied everywhere. `anon` and `authenticated` hold **no privileges** on slice tables (access model D); every policy targets `meetup_api` only.
 - Outsider (not in the meetup's group) reads **nothing**: no meetup, no attendees, no map data, no hints in error messages.
 - Group member: reads group's meetups (soonest first) and attendee display names.
 - Only the creator cancels. Cancel is final (no reopen). Cancelled meetups stay visible, marked cancelled.
