@@ -16,7 +16,7 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 
 ### Access control — enforced in the database
 - RLS on every table. Starter tables (`users`, `groups`, `group_memberships`) have RLS on with **no policies** — add only what the slice needs.
-- Anonymous access: denied everywhere. Policies target `authenticated` only.
+- Anonymous access: denied everywhere. `anon` and `authenticated` hold **no privileges** on slice tables (access model D); every policy targets `meetup_api` only.
 - Outsider (not in the meetup's group) reads **nothing**: no meetup, no attendees, no map data, no hints in error messages.
 - Group member: reads group's meetups (soonest first) and attendee display names.
 - Only the creator cancels. Cancel is final (no reopen). Cancelled meetups stay visible, marked cancelled.
@@ -51,7 +51,7 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 - **All reads and writes go through the API** (Hono app in a Supabase Edge Function). The app uses supabase-js **only for Auth** (sign-in and session), never `.from()` or `.rpc()`.
 - `anon` and `authenticated` get `revoke all` on every slice table, starter tables included. A user token can't touch the data even if the Data API is on.
 - The API connects to Postgres **as `meetup_api`** (`nobypassrls`, minimal grants), never as `postgres` or with the service role. Per request it verifies the JWT, then runs `set_config('request.jwt.claims', <verified claims>, true)` inside one transaction. Every DB call goes through one helper that does this.
-- All rules are RLS policies `to meetup_api` keyed on `(select auth.uid())`. Missing claims must give zero rows (fail closed), and a test covers it.
+- All rules are RLS policies `to meetup_api` keyed on `(select private.uid())` (reads `request.jwt.claims ->> 'sub'`; `meetup_api` has no `auth` schema access). Missing claims must give zero rows (fail closed), and a test covers it.
 - `meetup_api` password: never in a migration or in git. It's set once by hand and stored as an Edge Function secret or in a local `.env`.
 - Service role / secret key: tests and setup only, if at all. Never in the app or the API.
 - Sign-in: Supabase Auth directly from the app (email/password, seed accounts). No sign-up flow.
@@ -112,6 +112,7 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Required scope first. No bonus until Parts 1–3 are done.
 - Commit history is graded. Follow the Git workflow below.
 - Never commit secrets (`.env`, service role key, map tokens). Provide `.env.example`.
+- **Never read, print, grep or pass values from `.env` files.** The user adds and updates every secret. Claude only edits `.env.example` (empty keys) and tells the user which keys to fill. Code may load `.env` at runtime (API, tests); Claude never inspects the values. Never generate secrets on the user's behalf; give the user a command to run in their own terminal instead.
 - Every migration is additive and timestamped; `supabase db reset` from clean must work.
 - When proposing SQL/RLS, state which persona can do what and how a test proves it.
 - Report failures and dead ends honestly — they are part of the log and are graded. Don't paper over a failing test.

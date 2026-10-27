@@ -10,7 +10,7 @@ Members who haven't RSVP'd see an **approximate area**. Members who have RSVP'd,
 
 **How the area is computed (in the database, at create time):**
 - The map is divided into a fixed grid of roughly 800 m × 800 m cells. The approximate area is a 600 m circle around the center of the cell containing the meeting point. 600 m exceeds the cell's half-diagonal (~566 m), so the real point is always inside the circle. 600 m is also comfortably above the 300 m minimum.
-- If the meeting point happens to sit almost on the cell center, the circle is shifted by half a cell, so its center is never the exact point.
+- The center is the cell center, a fixed grid position, so it matches the exact point only by coincidence. I first planned to shift the circle when a point sat near its cell center, then dropped that: the shifted position would itself tell an observer "the spot is near this cell's center".
 - The place name is withheld until RSVP and replaced by a coarse label.
 - The area is stored with the meetup, not recomputed per request.
 
@@ -46,7 +46,7 @@ Example: North gate, Linden Park, in a town with only two parks nearby. At 800 m
 
 **The app's token has no database privileges.** Supabase Auth issues the user's token. The app uses it for exactly one thing: calling our API, a Hono app running as a Supabase Edge Function. Every read and write passes through that API, and the shared Zod schemas validate every request and every response.
 
-**The API can't bypass row-level security.** It connects to Postgres as `meetup_api`, a role created with `nobypassrls` that holds only the grants this slice needs. For each request it verifies the token and puts the verified claims on the transaction, so `auth.uid()` is the real user. All access rules are RLS policies on that role, reads and writes alike: membership, creator-only cancel, no RSVP when cancelled or started, exact location only for attendees. If the claims are ever missing, `auth.uid()` is null and every policy returns nothing. A bug fails closed instead of becoming a superuser query.
+**The API can't bypass row-level security.** It connects to Postgres as `meetup_api`, a role created with `nobypassrls` that holds only the grants this slice needs. For each request it verifies the token and puts the verified claims on the transaction, so `private.uid()` (our reader of the verified `sub` claim) is the real user. All access rules are RLS policies on that role, reads and writes alike: membership, creator-only cancel, no RSVP when cancelled or started, exact location only for attendees. If the claims are ever missing, `private.uid()` is null and every policy returns nothing. A bug fails closed instead of becoming a superuser query.
 
 **Security doesn't depend on dashboard settings.** `anon` and `authenticated` have every privilege revoked on the slice tables. Even with the Data API enabled, or on a local stack with Supabase's default grants, a user token calling PostgREST directly reads and writes nothing. A test proves it.
 
@@ -62,7 +62,20 @@ Each was rejected for the reason given.
 
 ## What I directed, what I reviewed or fixed by hand
 
-*(to fill during the build)*
+*(being filled during the build)*
+
+**Database phase: what I caught or changed after the AI's first version**
+- **Random offset → grid.** The first proposal gave each meetup a random offset. I questioned how it behaves in small towns. That led to the overlap problem with recurring meetups (circles intersect at the real spot) and to the grid design, plus the k-anonymity section above.
+- **Leaving the group.** I asked what happens if a member RSVPs and then leaves the group. The first policy draft allowed "creator **or** RSVP", so a leaver kept the exact spot. Every rule now requires *current* membership, and leaving deletes that member's RSVPs, so rejoining doesn't restore access.
+- **Write model.** I rejected the service-role design (B) and then the `set role` design (C). That led to D: the API connects as a role that can't bypass RLS, so a coding mistake fails closed instead of running as superuser.
+- **Spike: `auth.uid()` unusable.** Hosted Supabase won't let `postgres` grant our role access to the `auth` schema (the grant silently did nothing). Policies use our own `private.uid()`, which reads the verified claims.
+- **Spike: pooler auth cache.** After a role is recreated or its password changes, the first pooler login fails once with `28P01` while Supavisor refreshes. The API retries once.
+- **Code review of the migration found and fixed** (follow-up migration `harden_meetups_access`):
+  - `private.uid()` threw on pooled connections once a previous request had set claims (the setting reverts to `''`, not NULL). That would have turned "no claims → zero rows" into 500 errors. Verified fixed on a real pooled connection.
+  - An RSVP could race a concurrent cancel and commit onto a cancelled meetup. A trigger now locks the meetup and membership rows and re-checks. Verified: the RSVP waited for the cancel, then was rejected.
+  - Supabase's default privileges would have exposed *future* public tables to user roles. They're revoked now.
+  - Smaller items: the creator check now requires membership; one definer function became invoker; the area math wraps at the antimeridian.
+- **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first
 

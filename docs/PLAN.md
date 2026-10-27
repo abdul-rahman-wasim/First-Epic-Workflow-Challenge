@@ -57,7 +57,7 @@ Recommendation: **approximate area until RSVP, computed by snapping to a fixed g
 
 - **Grid:** cells of about 800 m × 800 m on a fixed lat/lng grid. The approximate center is the cell's center, and the radius is 600 m, which covers the whole cell (half-diagonal ≈ 566 m). The exact point is always inside the circle.
 - **Same place, same circle.** Every meetup at North gate lands in the same cell, so collecting many meetups gives an attacker nothing new.
-- **Never centered on the exact point:** if a point happens to sit within 50 m of its cell center, we shift the circle by half a cell. It still covers the point.
+- **Never centered on the exact point:** the center is the cell center, a fixed grid position, so it equals the exact point only by coincidence. The v1 idea of shifting the circle when a point sits near its cell center was dropped: the shifted position would itself reveal "the spot is near this cell's center".
 - **Coarse label instead of the place name:** "Approximate area — RSVP to see the exact spot".
 - **After RSVP,** the app refetches and the `meetup_locations` row is now visible, so the map swaps the circle for a pin. **Withdraw removes access again.**
 
@@ -86,15 +86,15 @@ Alternative: exact location for all members. Simpler, but the spec then requires
 
 ## 5. Access model (decided: Option D, database-enforced)
 
-**Principle:** the app's token has **no database privileges** on our tables. Every read and write goes through our API, which connects as a least-privilege role that **cannot bypass RLS**. All rules live in RLS policies keyed on `auth.uid()`.
+**Principle:** the app's token has **no database privileges** on our tables. Every read and write goes through our API, which connects as a least-privilege role that **cannot bypass RLS**. All rules live in RLS policies keyed on `private.uid()`, our own reader of the verified `sub` claim (`meetup_api` has no access to the `auth` schema, and doesn't need it).
 
 ### Roles and grants
 - `anon`, `authenticated`: `revoke all` on every slice table (starter tables included). Even with the Data API on, or on a local stack with default privileges, a user token reads and writes nothing.
 - `meetup_api`: created in a migration as `nologin nobypassrls`. After deploy, one manual step sets its password (`alter role meetup_api login password '…'`), so no secret ever sits in git. The Edge Function connects **as this role** through the Supabase pooler.
   - select: `users (id, display_name)` (column grant, so home columns stay unreadable), `groups`, `group_memberships`, `meetups`, `meetup_locations`, `rsvps`
   - insert: `meetups`, `meetup_locations`, `rsvps` · update `(status, cancelled_at)` on `meetups` · delete: `rsvps`
-- Per request, inside one transaction, the API runs `select set_config('request.jwt.claims', <verified claims>, true)`, so `auth.uid()` is the verified user.
-- **Fails closed:** if claims are missing, `auth.uid()` is null and every policy returns or permits nothing. A coding mistake can never become a superuser query, because the connection *is* the restricted role.
+- Per request, inside one transaction, the API runs `select set_config('request.jwt.claims', <verified claims>, true)`, so `private.uid()` is the verified user.
+- **Fails closed:** if claims are missing, `private.uid()` is null and every policy returns or permits nothing. A coding mistake can never become a superuser query, because the connection *is* the restricted role.
 
 ### RLS policies (`to meetup_api`). Every rule requires *current* membership
 
@@ -103,11 +103,11 @@ Alternative: exact location for all members. Simpler, but the spec then requires
 | group_memberships | own rows (= "my groups") | — |
 | groups | member | — |
 | users | self, or shares a group (attendee names) | — |
-| meetups | member of `group_id` (cancelled included) | insert: member and `created_by = auth.uid()` · update (cancel): `using (created_by = auth.uid() and member)` `with check (status = 'cancelled')` |
+| meetups | member of `group_id` (cancelled included) | insert: member and `created_by = private.uid()` (column default; the column isn't insertable) · update (cancel): `using (created_by = private.uid() and member)` `with check (status = 'cancelled')` |
 | meetup_locations | member **and** (creator **or** has RSVP) | insert: caller created the parent meetup |
-| rsvps | member of the meetup's group | insert: `user_id = auth.uid()`, member, meetup scheduled, `starts_at > now()` · delete: own row |
+| rsvps | member of the meetup's group | insert: `user_id = private.uid()`, member, meetup scheduled, `starts_at > now()` · delete: own row |
 
-Helpers `private.is_group_member(group_id)` and `private.can_see_exact(meetup_id)` are security definer, `search_path = ''`, in a schema that is never exposed and never granted to user roles. They avoid RLS recursion and use the `(select auth.uid())` caching pattern.
+Helpers `private.is_group_member(group_id)` and `private.can_see_exact(meetup_id)` are security definer, `search_path = ''`, in a schema that is never exposed and never granted to user roles. They avoid RLS recursion and use the `(select private.uid())` caching pattern.
 
 Triggers cover what policies can't express:
 - block reopening and edits of any column other than status/cancelled_at
@@ -202,7 +202,7 @@ Before each PR: `security-review`, `code-review`, green tests, Conventional Comm
 ## 11. What you need to do (I can't run browser logins)
 
 1. Create a free Supabase project. Note the project ref and the DB password. Project options:
-   - **Enable Data API: OFF.** Nothing uses it; Auth keeps working. D doesn't rely on it being off: user roles have no grants either way.
+   - **Enable Data API: ON or OFF, either is safe.** Our project keeps it **ON** on purpose: user roles have every privilege revoked, so a test calling the Data API with a persona's token gets permission denied. That proves the revokes, where a disabled API would prove nothing.
    - **Automatically expose new tables: OFF.** We grant per table and per column in migrations. With it ON, `users` would be granted on *all* columns, `home_lat/home_lng` included, so once a `users` select policy exists the home columns become readable.
    - **Enable automatic RLS: ON.** A safety net: any table we forget gets RLS (deny by default). Our migrations also enable RLS explicitly.
 2. Run `npx supabase login` once in your terminal (browser flow), then `npx supabase link --project-ref <ref>` from the repo root after `feat/db-schema` adds `supabase/config.toml`.
