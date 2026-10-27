@@ -102,6 +102,7 @@ API layer: a runtime-agnostic Hono app in `server/`, with config injected, serve
 - Map: `react-native-maps` default provider (Expo Go, no keys). Render exactly what the server returns: point or approximate circle. Loading/empty/error states.
 - Target: the user's **Android phone with Expo Go** (no emulator). The API and Auth are hosted, so the phone needs only internet; Metro runs over LAN or `--tunnel`.
 - Plain functional UI. No polish work.
+- **User-facing errors are plain language, always.** No DB, HTTP or library wording (no "expected number, received undefined", "row-level security", "invalid_credentials"). Field messages live in the shared Zod schema; every other error goes through `app/src/lib/messages.ts` (`friendlyError`). API error messages are written for people too.
 
 ## Out of scope — do not build
 Sign-up/account flows, web client, group/membership management, notifications, chat, comments, recurring meetups, invitations, live location (bonus only), profile/home editing.
