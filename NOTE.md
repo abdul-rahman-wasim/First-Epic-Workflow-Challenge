@@ -80,6 +80,7 @@ Each was rejected for the reason given.
   - The API now verifies the pooler's TLS certificate against Supabase's root CA (chain + hostname). Before, it encrypted but trusted any certificate. Verified: the connection works with the CA and is rejected without it.
   - JWTs are restricted to `ES256`/`RS256`.
   - I also enabled SSL enforcement on the database, so non-TLS clients are refused server-side.
+- **Test phase: a failing test was the fixture's fault.** The first run had 66/67 green. The "withdraw after start" test inserted an RSVP *as the owner* on a started meetup, and the DB refused it: the RSVP lock trigger applies to the owner too. The fixture now follows the real sequence (RSVP before the start, withdraw after), and a separate test asserts that even the owner can't RSVP to a started meetup.
 - **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first

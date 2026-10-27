@@ -1,13 +1,16 @@
 {
   "name": "altair-meetups",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@11.0.8",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc -p packages/shared --noEmit && tsc -p server --noEmit",
-    "test:unit": "vitest run --project shared --project server"
+    "typecheck": "tsc -p packages/shared && tsc -p server && tsc -p tests",
+    "test:unit": "vitest run --project shared --project server",
+    "test:access": "vitest run --project access",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
