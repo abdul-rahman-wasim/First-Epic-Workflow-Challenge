@@ -75,6 +75,7 @@ Each was rejected for the reason given.
   - An RSVP could race a concurrent cancel and commit onto a cancelled meetup. A trigger now locks the meetup and membership rows and re-checks. Verified: the RSVP waited for the cancel, then was rejected.
   - Supabase's default privileges would have exposed *future* public tables to user roles. They're revoked now.
   - Smaller items: the creator check now requires membership; one definer function became invoker; the area math wraps at the antimeridian.
+- **API phase: the gateway doesn't guard the function.** With this project's asymmetric (ES256) keys, a call with no token passed the Functions gateway with a 200. Token verification in our code (JWKS: signature, issuer, audience, expiry) is therefore the only gate, so it's enforced on every route and tested with no token and a garbage token. Turning the gateway check off explicitly (`--no-verify-jwt`) was refused by the agent's own safety check, and we kept the default.
 - **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first
