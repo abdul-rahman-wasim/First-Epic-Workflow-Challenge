@@ -1,4 +1,4 @@
-import type { CreateMeetupInput, MeetupDetail, MeetupListItem, MyGroup } from '@altair/shared';
+import type { CreateMeetupInput, MeetupDetail, MeetupListItem, MyGroup, UpdateMeetupInput } from '@altair/shared';
 import type { Tx } from './db.ts';
 
 // Every query runs inside asUser(): RLS limits rows to what the caller may see.
@@ -111,6 +111,25 @@ export async function startsAfterLead(tx: Tx, startsAt: string, leadHours: numbe
   const [r] = await tx<{ ok: boolean }[]>`
     select ${startsAt}::timestamptz > now() + make_interval(hours => ${leadHours}) as ok`;
   return r!.ok;
+}
+
+// Only the provided fields change. false = RLS matched no row (not editable any more).
+export async function updateMeetup(tx: Tx, meetupId: string, input: UpdateMeetupInput): Promise<boolean> {
+  const meetup = Object.fromEntries(
+    Object.entries({ title: input.title, starts_at: input.startsAt }).filter(([, v]) => v !== undefined),
+  );
+  const place = Object.fromEntries(
+    Object.entries({ place_name: input.placeName, lat: input.lat, lng: input.lng }).filter(([, v]) => v !== undefined),
+  );
+  if (Object.keys(meetup).length) {
+    const r = await tx`update public.meetups set ${tx(meetup)} where id = ${meetupId}`;
+    if (r.count === 0) return false;
+  }
+  if (Object.keys(place).length) {
+    const r = await tx`update public.meetup_locations set ${tx(place)} where meetup_id = ${meetupId}`;
+    if (r.count === 0) return false;
+  }
+  return true;
 }
 
 // Returns false when RLS matched no row (not creator, not member, or already cancelled).
