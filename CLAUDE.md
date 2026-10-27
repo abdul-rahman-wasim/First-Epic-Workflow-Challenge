@@ -51,7 +51,7 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 - **All reads and writes go through the API** (Hono app in a Supabase Edge Function). The app uses supabase-js **only for Auth** (sign-in and session), never `.from()` or `.rpc()`.
 - `anon` and `authenticated` get `revoke all` on every slice table, starter tables included. A user token can't touch the data even if the Data API is on.
 - The API connects to Postgres **as `meetup_api`** (`nobypassrls`, minimal grants), never as `postgres` or with the service role. Per request it verifies the JWT, then runs `set_config('request.jwt.claims', <verified claims>, true)` inside one transaction. Every DB call goes through one helper that does this.
-- All rules are RLS policies `to meetup_api` keyed on `(select auth.uid())`. Missing claims must give zero rows (fail closed), and a test covers it.
+- All rules are RLS policies `to meetup_api` keyed on `(select private.uid())` (reads `request.jwt.claims ->> 'sub'`; `meetup_api` has no `auth` schema access). Missing claims must give zero rows (fail closed), and a test covers it.
 - `meetup_api` password: never in a migration or in git. It's set once by hand and stored as an Edge Function secret or in a local `.env`.
 - Service role / secret key: tests and setup only, if at all. Never in the app or the API.
 - Sign-in: Supabase Auth directly from the app (email/password, seed accounts). No sign-up flow.

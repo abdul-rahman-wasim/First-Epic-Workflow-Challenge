@@ -10,7 +10,7 @@ Members who haven't RSVP'd see an **approximate area**. Members who have RSVP'd,
 
 **How the area is computed (in the database, at create time):**
 - The map is divided into a fixed grid of roughly 800 m × 800 m cells. The approximate area is a 600 m circle around the center of the cell containing the meeting point. 600 m exceeds the cell's half-diagonal (~566 m), so the real point is always inside the circle. 600 m is also comfortably above the 300 m minimum.
-- If the meeting point happens to sit almost on the cell center, the circle is shifted by half a cell, so its center is never the exact point.
+- The center is the cell center, a fixed grid position, so it matches the exact point only by coincidence. I first planned to shift the circle when a point sat near its cell center, then dropped that: the shifted position would itself tell an observer "the spot is near this cell's center".
 - The place name is withheld until RSVP and replaced by a coarse label.
 - The area is stored with the meetup, not recomputed per request.
 
@@ -46,7 +46,7 @@ Example: North gate, Linden Park, in a town with only two parks nearby. At 800 m
 
 **The app's token has no database privileges.** Supabase Auth issues the user's token. The app uses it for exactly one thing: calling our API, a Hono app running as a Supabase Edge Function. Every read and write passes through that API, and the shared Zod schemas validate every request and every response.
 
-**The API can't bypass row-level security.** It connects to Postgres as `meetup_api`, a role created with `nobypassrls` that holds only the grants this slice needs. For each request it verifies the token and puts the verified claims on the transaction, so `auth.uid()` is the real user. All access rules are RLS policies on that role, reads and writes alike: membership, creator-only cancel, no RSVP when cancelled or started, exact location only for attendees. If the claims are ever missing, `auth.uid()` is null and every policy returns nothing. A bug fails closed instead of becoming a superuser query.
+**The API can't bypass row-level security.** It connects to Postgres as `meetup_api`, a role created with `nobypassrls` that holds only the grants this slice needs. For each request it verifies the token and puts the verified claims on the transaction, so `private.uid()` (our reader of the verified `sub` claim) is the real user. All access rules are RLS policies on that role, reads and writes alike: membership, creator-only cancel, no RSVP when cancelled or started, exact location only for attendees. If the claims are ever missing, `private.uid()` is null and every policy returns nothing. A bug fails closed instead of becoming a superuser query.
 
 **Security doesn't depend on dashboard settings.** `anon` and `authenticated` have every privilege revoked on the slice tables. Even with the Data API enabled, or on a local stack with Supabase's default grants, a user token calling PostgREST directly reads and writes nothing. A test proves it.
 
