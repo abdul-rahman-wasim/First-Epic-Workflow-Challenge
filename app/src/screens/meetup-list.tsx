@@ -1,6 +1,7 @@
 import type { MeetupListItem, MyGroup } from '@altair/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { router, Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/button';
 import { EmptyState, ErrorState, Loading } from '@/components/state-view';
@@ -8,21 +9,28 @@ import { useAuth } from '@/lib/auth';
 import { formatWhen } from '@/lib/format';
 import { friendlyError } from '@/lib/messages';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useGroupMeetups, useMyGroups } from '@/lib/queries';
+import { keys, useGroupMeetups, useMyGroups } from '@/lib/queries';
 
 export function MeetupList() {
   const { signOut } = useAuth();
   const groups = useMyGroups();
+  const qc = useQueryClient();
   const [picked, setPicked] = useState<string | null>(null);
-  const groupId = picked ?? groups.data?.groups[0]?.id;
+  const list = groups.data?.groups ?? [];
+  // A picked group the user has since left falls back to their first group.
+  const groupId = list.some((g) => g.id === picked) ? picked! : list[0]?.id;
   const meetups = useGroupMeetups(groupId);
 
-  // Access can change while the screen is in the background (e.g. removed from a group).
+  // Access can change while away (e.g. removed from a group): refresh on return, not on first mount.
+  const firstFocus = useRef(true);
   useFocusEffect(
     useCallback(() => {
-      groups.refetch();
-      if (groupId) meetups.refetch();
-    }, [groupId]), // eslint-disable-line react-hooks/exhaustive-deps
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void qc.invalidateQueries({ queryKey: keys.groups });
+    }, [qc]),
   );
 
   const header = <Stack.Screen options={{ headerRight: () => <Button tone="plain" label="Sign out" onPress={signOut} /> }} />;

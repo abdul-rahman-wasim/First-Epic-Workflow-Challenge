@@ -29,6 +29,7 @@ export function SignIn() {
   const clearError = () => error && setError(null);
 
   const submit = async () => {
+    if (busy || !email || !password) return; // the keyboard's Done key bypasses the button
     setBusy(true);
     setError(null);
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });

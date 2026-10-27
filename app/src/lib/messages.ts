@@ -8,7 +8,7 @@ const BY_CODE: Record<string, string> = {
   forbidden: 'Only the person who created this meetup can do that.',
   not_found: 'This meetup isn’t available. It may have been removed, or you’re no longer in its group.',
   conflict: 'This meetup just changed. Refresh and try again.',
-  invalid_input: 'Some details need fixing. Check the highlighted fields.',
+  invalid_input: 'Some details need fixing.',
   internal: 'Something went wrong on our side. Please try again.',
 };
 
@@ -21,8 +21,9 @@ const AUTH: Record<string, string> = {
 
 export function friendlyError(e: unknown): string {
   if (e instanceof ApiRequestError) {
-    // The API's own conflict and forbidden messages are written for people; keep them.
-    if ((e.code === 'conflict' || e.code === 'forbidden') && e.message) return e.message;
+    // The API's own messages for these are written for people and name the right thing
+    // (group vs meetup); keep them.
+    if ((e.code === 'conflict' || e.code === 'forbidden' || e.code === 'not_found') && e.message) return e.message;
     return BY_CODE[e.code] ?? BY_CODE.internal!;
   }
   if (e instanceof AuthError) {

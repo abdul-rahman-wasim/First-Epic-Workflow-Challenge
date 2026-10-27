@@ -38,6 +38,8 @@ export async function api<S extends z.ZodType>(method: Method, path: string, sch
   }
 
   const json: unknown = await res.json().catch(() => null);
+  // The server no longer accepts this session: clear it so the app returns to sign-in.
+  if (res.status === 401) await supabase.auth.signOut({ scope: 'local' });
   if (!res.ok) {
     const err = ApiError.safeParse(json);
     if (err.success) throw new ApiRequestError(res.status, err.data.error.code, err.data.error.message, err.data.error.issues);

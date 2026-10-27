@@ -23,8 +23,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, [qc]);
 
+  // Always leaves the device signed out, even offline (the remote sign-out can fail).
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) await supabase.auth.signOut({ scope: 'local' });
+    setSession(null);
+    qc.clear();
   };
 
   return <AuthContext.Provider value={{ session, hydrated, signOut }}>{children}</AuthContext.Provider>;

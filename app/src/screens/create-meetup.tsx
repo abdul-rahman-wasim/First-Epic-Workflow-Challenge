@@ -14,6 +14,7 @@ import { useCreateMeetup } from '@/lib/queries';
 const TOWN = { latitude: 40.0, longitude: -100.0, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
 type Point = { lat: number; lng: number };
+const FIELDS = ['title', 'startsAt', 'placeName', 'lat', 'lng'];
 
 export function CreateMeetup({ groupId }: { groupId: string }) {
   const create = useCreateMeetup();
@@ -56,7 +57,7 @@ export function CreateMeetup({ groupId }: { groupId: string }) {
     // Same schema the server uses: instant feedback; the server still re-validates.
     const local = CreateMeetupInput.safeParse(draft);
     if (!local.success) {
-      setIssues(Object.fromEntries(local.error.issues.map((i) => [String(i.path[0]), i.message])));
+      showIssues(local.error.issues.map((i) => ({ path: String(i.path[0] ?? ''), message: i.message })));
       return;
     }
     setIssues({});
@@ -64,11 +65,23 @@ export function CreateMeetup({ groupId }: { groupId: string }) {
       onSuccess: () => router.back(),
       // Keep the draft; show what the server said.
       onError: (e) => {
-        if (e instanceof ApiRequestError && e.issues.length) {
-          setIssues(Object.fromEntries(e.issues.map((i) => [i.path, i.message])));
-        } else setFormError(friendlyError(e));
+        if (e instanceof ApiRequestError && e.issues.length) showIssues(e.issues);
+        else setFormError(friendlyError(e));
       },
     });
+  };
+
+  // First message per field wins; anything not tied to a field goes in the form banner.
+  const showIssues = (list: { path: string; message: string }[]) => {
+    const byField: Record<string, string> = {};
+    const other: string[] = [];
+    for (const i of list) {
+      const field = i.path.split('.')[0]!;
+      if (FIELDS.includes(field)) byField[field] ??= i.message;
+      else other.push(i.message);
+    }
+    setIssues(byField);
+    setFormError(other.length ? other.join('\n') : null);
   };
 
   return (
@@ -103,7 +116,7 @@ export function CreateMeetup({ groupId }: { groupId: string }) {
         <Text style={styles.hint}>{point ? `${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}` : 'Tap the map to place the meeting point.'}</Text>
       </Field>
 
-      {(formError || issues.groupId) && <Text style={styles.error}>{formError ?? issues.groupId}</Text>}
+      {formError && <Text style={styles.error}>{formError}</Text>}
       <Button label="Create meetup" onPress={submit} busy={create.isPending} />
     </ScrollView>
   );
