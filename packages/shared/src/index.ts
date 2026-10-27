@@ -4,10 +4,14 @@ import { z } from 'zod';
 
 // ---------- primitives ----------
 
-export const Latitude = z.number().min(-90).max(90);
-export const Longitude = z.number().min(-180).max(180);
+// Messages are user-facing: the app and the API show the same wording.
+const pinMissing = { error: (i: { input: unknown }) => (i.input === undefined ? 'Tap the map to place the meeting point' : 'Invalid meeting point') };
+const badPoint = { error: 'Invalid meeting point' };
+
+export const Latitude = z.number(pinMissing).min(-90, badPoint).max(90, badPoint);
+export const Longitude = z.number(pinMissing).min(-180, badPoint).max(180, badPoint);
 // ISO-8601 with an explicit offset ('Z' or ±hh:mm); a local time without zone is rejected.
-export const IsoDateTime = z.iso.datetime({ offset: true });
+export const IsoDateTime = z.iso.datetime({ offset: true, error: 'Pick a start date and time' });
 export const MeetupStatus = z.enum(['scheduled', 'cancelled']);
 
 // ---------- requests ----------
@@ -20,9 +24,6 @@ export type MeetupIdParam = z.infer<typeof MeetupIdParam>;
 
 // Strict: unknown keys (e.g. createdBy, status) are rejected, not ignored.
 // The future-start rule uses the clock of whoever parses: authoritative on the server.
-// Messages are user-facing: the app and the API show the same wording.
-const pinMissing = { error: (i: { input: unknown }) => (i.input === undefined ? 'Tap the map to place the meeting point' : 'Invalid meeting point') };
-
 export const CreateMeetupInput = z.strictObject({
   groupId: z.uuid({ error: 'Pick a group' }),
   title: z
@@ -30,16 +31,17 @@ export const CreateMeetupInput = z.strictObject({
     .trim()
     .min(1, { error: 'Add a title' })
     .max(80, { error: 'Keep the title to 80 characters or fewer' }),
-  startsAt: z.iso
-    .datetime({ offset: true, error: 'Pick a start date and time' })
-    .refine((v) => Date.parse(v) > Date.now(), { error: 'Start time must be in the future' }),
+  // An unparseable value already has a format issue; don't add "must be in the future" too.
+  startsAt: IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now(), {
+    error: 'Start time must be in the future',
+  }),
   placeName: z
     .string({ error: 'Name the meeting point' })
     .trim()
     .min(1, { error: 'Name the meeting point' })
     .max(120, { error: 'Keep the place name to 120 characters or fewer' }),
-  lat: z.number(pinMissing).min(-90, { error: 'Invalid meeting point' }).max(90, { error: 'Invalid meeting point' }),
-  lng: z.number(pinMissing).min(-180, { error: 'Invalid meeting point' }).max(180, { error: 'Invalid meeting point' }),
+  lat: Latitude,
+  lng: Longitude,
 });
 export type CreateMeetupInput = z.infer<typeof CreateMeetupInput>;
 
