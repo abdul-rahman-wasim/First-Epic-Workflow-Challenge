@@ -35,7 +35,8 @@ function RootStack() {
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="index" options={{ title: 'Meetups' }} />
         <Stack.Screen name="meetups/new" options={{ title: 'New meetup', presentation: 'modal' }} />
-        <Stack.Screen name="meetups/[id]" options={{ title: 'Meetup' }} />
+        <Stack.Screen name="meetups/[id]/index" options={{ title: 'Meetup' }} />
+        <Stack.Screen name="meetups/[id]/edit" options={{ title: 'Edit meetup', presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
   );

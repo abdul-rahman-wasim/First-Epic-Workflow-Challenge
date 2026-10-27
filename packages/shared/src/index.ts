@@ -27,28 +27,49 @@ export type GroupIdParam = z.infer<typeof GroupIdParam>;
 export const MeetupIdParam = z.strictObject({ meetupId: z.uuid() });
 export type MeetupIdParam = z.infer<typeof MeetupIdParam>;
 
+// Field rules shared by create and edit.
+const Title = z
+  .string({ error: 'Add a title' })
+  .trim()
+  .min(1, { error: 'Add a title' })
+  .max(80, { error: 'Keep the title to 80 characters or fewer' });
+// The lead-time rule uses the clock of whoever parses: authoritative on the server.
+// An unparseable value already has a format issue; don't add a lead-time message too.
+const StartsAt = IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now() + MIN_LEAD_MS, {
+  error: MIN_LEAD_MESSAGE,
+});
+const PlaceName = z
+  .string({ error: 'Name the meeting point' })
+  .trim()
+  .min(1, { error: 'Name the meeting point' })
+  .max(120, { error: 'Keep the place name to 120 characters or fewer' });
+
 // Strict: unknown keys (e.g. createdBy, status) are rejected, not ignored.
-// The future-start rule uses the clock of whoever parses: authoritative on the server.
 export const CreateMeetupInput = z.strictObject({
   groupId: z.uuid({ error: 'Pick a group' }),
-  title: z
-    .string({ error: 'Add a title' })
-    .trim()
-    .min(1, { error: 'Add a title' })
-    .max(80, { error: 'Keep the title to 80 characters or fewer' }),
-  // An unparseable value already has a format issue; don't add a lead-time message too.
-  startsAt: IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now() + MIN_LEAD_MS, {
-    error: MIN_LEAD_MESSAGE,
-  }),
-  placeName: z
-    .string({ error: 'Name the meeting point' })
-    .trim()
-    .min(1, { error: 'Name the meeting point' })
-    .max(120, { error: 'Keep the place name to 120 characters or fewer' }),
+  title: Title,
+  startsAt: StartsAt,
+  placeName: PlaceName,
   lat: Latitude,
   lng: Longitude,
 });
 export type CreateMeetupInput = z.infer<typeof CreateMeetupInput>;
+
+// Bonus edit: send only what changed. Group, creator and status can't be edited (strict).
+export const UpdateMeetupInput = z
+  .strictObject({
+    title: Title.optional(),
+    startsAt: StartsAt.optional(),
+    placeName: PlaceName.optional(),
+    lat: Latitude.optional(),
+    lng: Longitude.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { error: 'Change at least one detail' })
+  .refine((v) => (v.lat === undefined) === (v.lng === undefined), {
+    error: 'Move the pin to change the meeting point',
+    path: ['lat'],
+  });
+export type UpdateMeetupInput = z.infer<typeof UpdateMeetupInput>;
 
 // ---------- responses ----------
 // Strict on purpose: the API parses every response before sending, so any field

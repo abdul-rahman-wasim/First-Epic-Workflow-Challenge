@@ -8,6 +8,7 @@ import {
   MIN_LEAD_HOURS,
   MIN_LEAD_MESSAGE,
   MyGroupsResponse,
+  UpdateMeetupInput,
   type ErrorCode,
 } from '@altair/shared';
 import { Hono, type Context } from 'hono';
@@ -137,6 +138,26 @@ export function createApp({ sql, verifyToken }: Deps) {
       if (t.status === 'cancelled') throw new HttpError('conflict', 'This meetup is already cancelled');
       // 0 rows: a concurrent cancel or membership change won; RLS skipped the row.
       if (!(await q.cancelMeetup(tx, meetupId))) throw new HttpError('conflict', 'This meetup is already cancelled');
+      return detailOr404(tx, meetupId);
+    });
+    return send(c, MeetupResponse, body);
+  });
+
+  // Bonus: creator-only edit of title, start time and meeting point.
+  app.patch('/meetups/:meetupId', async (c) => {
+    const { meetupId } = parse(MeetupIdParam, c.req.param());
+    const input = parse(UpdateMeetupInput, await c.req.json().catch(() => undefined));
+    const body = await db(c, async (tx) => {
+      const t = await q.writeTarget(tx, meetupId);
+      if (!t) throw notFound();
+      if (!t.isCreator) throw new HttpError('forbidden', 'Only the person who created this meetup can edit it');
+      if (t.status === 'cancelled') throw new HttpError('conflict', 'Cancelled meetups can’t be edited');
+      if (t.started) throw new HttpError('conflict', 'This meetup has already started, so it can’t be edited');
+      if (input.startsAt && !(await q.startsAfterLead(tx, input.startsAt, MIN_LEAD_HOURS))) {
+        throw new HttpError('invalid_input', 'Some details need fixing', [{ path: 'startsAt', message: MIN_LEAD_MESSAGE }]);
+      }
+      // 0 rows: the meetup changed state in between (cancelled, started, membership); RLS skipped it.
+      if (!(await q.updateMeetup(tx, meetupId, input))) throw new HttpError('conflict', 'This meetup just changed. Refresh and try again');
       return detailOr404(tx, meetupId);
     });
     return send(c, MeetupResponse, body);

@@ -117,6 +117,13 @@ function Actions({ meetup }: { meetup: Meetup }) {
       {scheduled && started && !meetup.hasRsvp && !meetup.isCreator && (
         <Text style={styles.muted}>This meetup has started, so it isn’t taking RSVPs.</Text>
       )}
+      {meetup.isCreator && scheduled && !started && (
+        <Button
+          label="Edit meetup"
+          onPress={() => router.push({ pathname: '/meetups/[id]/edit', params: { id: meetup.id } })}
+          disabled={busy}
+        />
+      )}
       {meetup.isCreator && scheduled && (
         <Button tone="danger" label="Cancel meetup" onPress={() => setConfirming(true)} busy={cancel.isPending} disabled={busy} />
       )}

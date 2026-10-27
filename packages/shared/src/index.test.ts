@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CreateMeetupInput, MeetupDetail } from './index';
+import { CreateMeetupInput, MeetupDetail, UpdateMeetupInput } from './index';
 
 const valid = {
   groupId: 'b2000000-0000-4000-8000-000000000001',
@@ -45,6 +45,22 @@ describe('CreateMeetupInput', () => {
       lat: 'Tap the map to place the meeting point',
       lng: 'Tap the map to place the meeting point',
     });
+  });
+});
+
+describe('UpdateMeetupInput', () => {
+  it('accepts a partial change', () => {
+    expect(UpdateMeetupInput.parse({ title: ' New name ' })).toEqual({ title: 'New name' });
+  });
+
+  it.each([
+    ['an empty change', {}],
+    ['a start inside the lead time', { startsAt: new Date(Date.now() + 3_600_000).toISOString() }],
+    ['half a coordinate', { lat: 40 }],
+    ['a status change', { status: 'scheduled' }],
+    ['a group change', { groupId: 'b2000000-0000-4000-8000-000000000002' }],
+  ])('rejects %s', (_, body) => {
+    expect(UpdateMeetupInput.safeParse(body).success).toBe(false);
   });
 });
 
