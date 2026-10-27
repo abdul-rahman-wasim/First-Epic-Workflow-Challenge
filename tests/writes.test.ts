@@ -26,6 +26,7 @@ describe('create', () => {
   it.each<[string, () => object]>([
     ['a past start', () => ({ startsAt: inHours(-1) })],
     ['a start of right now', () => ({ startsAt: new Date().toISOString() })],
+    ['a start inside the 3-hour lead time', () => ({ startsAt: inHours(2.5) })],
     ['a start without timezone', () => ({ startsAt: '2031-01-01T10:00:00' })],
     ['a blank title', () => ({ title: '   ' })],
     ['an 81-character title', () => ({ title: 'x'.repeat(81) })],

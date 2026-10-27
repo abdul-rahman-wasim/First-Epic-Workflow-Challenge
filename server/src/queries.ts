@@ -106,8 +106,10 @@ export async function createMeetup(tx: Tx, input: CreateMeetupInput): Promise<st
   return m!.id;
 }
 
-export async function startsInFuture(tx: Tx, startsAt: string): Promise<boolean> {
-  const [r] = await tx<{ ok: boolean }[]>`select ${startsAt}::timestamptz > now() as ok`;
+// Lead-time rule on the DB clock (the phone's and the API's clocks may be off).
+export async function startsAfterLead(tx: Tx, startsAt: string, leadHours: number): Promise<boolean> {
+  const [r] = await tx<{ ok: boolean }[]>`
+    select ${startsAt}::timestamptz > now() + make_interval(hours => ${leadHours}) as ok`;
   return r!.ok;
 }
 

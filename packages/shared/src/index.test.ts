@@ -4,7 +4,7 @@ import { CreateMeetupInput, MeetupDetail } from './index';
 const valid = {
   groupId: 'b2000000-0000-4000-8000-000000000001',
   title: '  Evening loop  ',
-  startsAt: new Date(Date.now() + 3_600_000).toISOString(),
+  startsAt: new Date(Date.now() + 24 * 3_600_000).toISOString(),
   placeName: 'Fountain plaza, Town Green',
   lat: 39.999134,
   lng: -99.999461,
@@ -18,6 +18,7 @@ describe('CreateMeetupInput', () => {
 
   it.each([
     ['past start', { startsAt: new Date(Date.now() - 60_000).toISOString() }],
+    ['start inside the 3-hour lead time', { startsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }],
     ['start without timezone', { startsAt: '2030-01-01T10:00:00' }],
     ['whitespace-only title', { title: '   ' }],
     ['81-char title', { title: 'x'.repeat(81) }],
