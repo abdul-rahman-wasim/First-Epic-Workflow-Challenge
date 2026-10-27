@@ -151,23 +151,29 @@ insert into public.group_memberships (group_id, user_id) values
 -- interval), so the reference meetups are always upcoming.
 -- =====================================================================
 
--- insert into public.meetups
---   (id, group_id, created_by, title, starts_at,
---    meeting_point_name, meeting_point_lat, meeting_point_lng)
--- values
---   ('c3000000-0000-4000-8000-000000000001', 'b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001',
---    'Saturday morning loop', now() + interval '7 days',
---    'North gate, Linden Park', 40.012046, -99.984517),
---   ('c3000000-0000-4000-8000-000000000002', 'b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002',
---    'Weeknight short walk', now() + interval '10 days',
---    'Front steps, Elm Avenue Library', 40.003318, -99.979762),
---   ('c3000000-0000-4000-8000-000000000003', 'b2000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000005',
---    'Riverside sunrise walk', now() + interval '8 days',
---    'Boathouse lot, Riverside Path', 39.985239, -100.009683);
+-- Adapted to this schema: the exact point lives in meetup_locations, and the
+-- approximate area on meetups is filled by a trigger. A meetup must get its
+-- location in the same transaction (deferred check), hence begin/commit.
+begin;
 
--- insert into public.rsvps (meetup_id, user_id) values
---   ('c3000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002'),   -- Jordan Price -> Saturday morning loop
---   ('c3000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000004'),   -- Riley Chen   -> Saturday morning loop
---   ('c3000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000006');   -- Casey Moreno -> Riverside sunrise walk
---
+insert into public.meetups (id, group_id, created_by, title, starts_at) values
+  ('c3000000-0000-4000-8000-000000000001', 'b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001',
+   'Saturday morning loop', now() + interval '7 days'),
+  ('c3000000-0000-4000-8000-000000000002', 'b2000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002',
+   'Weeknight short walk', now() + interval '10 days'),
+  ('c3000000-0000-4000-8000-000000000003', 'b2000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000005',
+   'Riverside sunrise walk', now() + interval '8 days');
+
+insert into public.meetup_locations (meetup_id, place_name, lat, lng) values
+  ('c3000000-0000-4000-8000-000000000001', 'North gate, Linden Park', 40.012046, -99.984517),
+  ('c3000000-0000-4000-8000-000000000002', 'Front steps, Elm Avenue Library', 40.003318, -99.979762),
+  ('c3000000-0000-4000-8000-000000000003', 'Boathouse lot, Riverside Path', 39.985239, -100.009683);
+
+insert into public.rsvps (meetup_id, user_id) values
+  ('c3000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002'),   -- Jordan Price -> Saturday morning loop
+  ('c3000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000004'),   -- Riley Chen   -> Saturday morning loop
+  ('c3000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000006');   -- Casey Moreno -> Riverside sunrise walk
+
+commit;
+
 -- "Weeknight short walk" intentionally has no RSVPs (an empty attendee list).
