@@ -3,6 +3,7 @@ import {
   MeetupResponse,
   MyGroupsResponse,
   type CreateMeetupInput,
+  type UpdateMeetupInput,
 } from '@altair/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
@@ -34,6 +35,17 @@ function useMeetupWrite(method: 'PUT' | 'DELETE' | 'POST', path: (id: string) =>
     mutationFn: (id: string) => api(method, path(id), MeetupResponse),
     onSuccess: (body) => {
       qc.setQueryData(keys.meetup(body.meetup.id), body);
+      return qc.invalidateQueries({ queryKey: keys.groupMeetups(body.meetup.groupId) });
+    },
+  });
+}
+
+export function useUpdateMeetup(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (changes: UpdateMeetupInput) => api('PATCH', `/meetups/${id}`, MeetupResponse, changes),
+    onSuccess: (body) => {
+      qc.setQueryData(keys.meetup(id), body);
       return qc.invalidateQueries({ queryKey: keys.groupMeetups(body.meetup.groupId) });
     },
   });
