@@ -1,0 +1,9 @@
+{
+  "imports": {
+    "@altair/shared": "../../../packages/shared/src/index.ts",
+    "zod": "npm:zod@4.6.7",
+    "hono": "npm:hono@4.13.14",
+    "jose": "npm:jose@6.2.13",
+    "postgres": "npm:postgres@3.4.9"
+  }
+}

@@ -16,7 +16,7 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 
 ### Access control — enforced in the database
 - RLS on every table. Starter tables (`users`, `groups`, `group_memberships`) have RLS on with **no policies** — add only what the slice needs.
-- Anonymous access: denied everywhere. Policies target `authenticated` only.
+- Anonymous access: denied everywhere. `anon` and `authenticated` hold **no privileges** on slice tables (access model D); every policy targets `meetup_api` only.
 - Outsider (not in the meetup's group) reads **nothing**: no meetup, no attendees, no map data, no hints in error messages.
 - Group member: reads group's meetups (soonest first) and attendee display names.
 - Only the creator cancels. Cancel is final (no reopen). Cancelled meetups stay visible, marked cancelled.
@@ -45,10 +45,15 @@ If the spec is ambiguous: state the assumption in the note (`NOTE.md`) and proce
 - **Every write** (create, cancel, RSVP, withdraw, edit) goes through server-side code that validates with those schemas. App never writes to tables or calls write RPCs directly. Postgres functions are fine *behind* the endpoint.
 - Server rejects invalid input with a clear error, including `starts_at` not strictly in the future on create.
 - Validation limits from spec: title 1–80 chars after trim; place name 1–120 chars; lat −90..90, lng −180..180; `starts_at` timestamptz.
-- Endpoint calls Supabase **with the caller's JWT** (so RLS still applies). Service role key only in tests/setup, never in the app, never committed.
+- The API also parses every response through the shared output schema before sending, so no unlisted field (for example a home column) can leave.
 
-### Reads
-- Reads (my groups, group meetups, detail, attendees, map data) may go direct to Supabase under RLS with the user session, or via endpoints. Visibility rules hold either way.
+### Access model D (decided, see docs/PLAN.md §5)
+- **All reads and writes go through the API** (Hono app in a Supabase Edge Function). The app uses supabase-js **only for Auth** (sign-in and session), never `.from()` or `.rpc()`.
+- `anon` and `authenticated` get `revoke all` on every slice table, starter tables included. A user token can't touch the data even if the Data API is on.
+- The API connects to Postgres **as `meetup_api`** (`nobypassrls`, minimal grants), never as `postgres` or with the service role. Per request it verifies the JWT, then runs `set_config('request.jwt.claims', <verified claims>, true)` inside one transaction. Every DB call goes through one helper that does this.
+- All rules are RLS policies `to meetup_api` keyed on `(select private.uid())` (reads `request.jwt.claims ->> 'sub'`; `meetup_api` has no `auth` schema access). Missing claims must give zero rows (fail closed), and a test covers it.
+- `meetup_api` password: never in a migration or in git. It's set once by hand and stored as an Edge Function secret or in a local `.env`.
+- Service role / secret key: tests and setup only, if at all. Never in the app or the API.
 - Sign-in: Supabase Auth directly from the app (email/password, seed accounts). No sign-up flow.
 
 ## Tests (required)
@@ -59,7 +64,7 @@ Automated tests proving access for four personas — outsider, member not RSVP'd
 - multi-group case (Riley Chen: both groups, RSVP'd only to "Saturday morning loop") incl. what map data returns per meetup;
 - home location never present in any response;
 - past/now `starts_at` rejected by the server.
-Tests run against a real Supabase (local), signing in as seed users. Reset DB to a known state before the suite.
+Tests run against the real hosted Supabase project (no Docker), signing in as seed users. Reset DB to a known state before the suite.
 
 ## Seed cast (password for all: `altair-fixture-pass`, email `<firstname>@example.test`)
 | Persona | Groups | Role |
@@ -89,13 +94,13 @@ tests/                                    # access tests
 NOTE.md                                   # reasoning note
 README.md                                 # run instructions from clean checkout
 ```
-Endpoint layer choice (Node TS server vs Supabase Edge Function on Deno) to be confirmed; default is a small Node TS server because it shares the Zod module with the app without import-map work.
+API layer: a runtime-agnostic Hono app in `server/`, with config injected, served by `supabase/functions/api/index.ts` (Deno, deployed with `--use-api`) and run in-process on Node for tests. Deno resolves `zod` and `postgres` through the function's `deno.json` import map, pinned to the same versions as the workspace.
 
 ## App (Expo React Native, one platform)
 - Screens: sign-in, group meetup list (loading/empty/error), create meetup (server errors shown), meetup detail (title, time, status, attendees, map, RSVP, creator-only cancel). Withdraw UI optional.
 - Group selection: simple picker fed by "my groups" query.
 - Map: `react-native-maps` default provider (Expo Go, no keys). Render exactly what the server returns: point or approximate circle. Loading/empty/error states.
-- Android emulator reaches local API via `10.0.2.2`; device via LAN IP.
+- Target: the user's **Android phone with Expo Go** (no emulator). The API and Auth are hosted, so the phone needs only internet; Metro runs over LAN or `--tunnel`.
 - Plain functional UI. No polish work.
 
 ## Out of scope — do not build
@@ -107,6 +112,8 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Required scope first. No bonus until Parts 1–3 are done.
 - Commit history is graded. Follow the Git workflow below.
 - Never commit secrets (`.env`, service role key, map tokens). Provide `.env.example`.
+- **Never read, print, grep or pass values from `.env` files.** The user adds and updates every secret. Claude only edits `.env.example` (empty keys) and tells the user which keys to fill. Code may load `.env` at runtime (API, tests); Claude never inspects the values. Never generate secrets on the user's behalf; give the user a command to run in their own terminal instead.
+- **Private keys never enter the repo** (`*.key`, `*.pem`, anything containing `PRIVATE KEY`; gitignored). Public CA certificates are fine: `server/certs/supabase-ca.crt` is Supabase's public root CA, embedded in `server/src/supabase-ca.ts`, and a unit test checks it holds no private key.
 - Every migration is additive and timestamped; `supabase db reset` from clean must work.
 - When proposing SQL/RLS, state which persona can do what and how a test proves it.
 - Report failures and dead ends honestly — they are part of the log and are graded. Don't paper over a failing test.
@@ -117,6 +124,8 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Branches: `main` (submission-ready) ← `dev` (integration) ← `feat/<name>` (one per feature).
 - Start every new feature on a fresh branch cut from latest `dev`: `git switch dev && git switch -c feat/<name>`.
 - Finished feature: PR `feat/<name>` → `dev`. Then cut the next feature branch from updated `dev`. Never work directly on `dev` or `main`.
+- Remote: `origin` = https://github.com/abdul-rahman-wasim/First-Epic-Workflow-Challenge (public). Open PRs with `gh pr create --base dev`.
+- `gh` acts as `abdul-rahman-wasim` in this project only: `.claude/settings.local.json` sets `GH_CONFIG_DIR` to a separate gh config whose active account is the repo owner (tokens stay in the OS keyring). Global gh account stays `Team1-Sportech` — never `gh auth switch`. If `gh auth status` shows the wrong account, fall back to prefixing `GH_TOKEN=$(gh auth token --user abdul-rahman-wasim)`.
 - `dev` → `main` when a milestone is stable (e.g. end of Part 1, Part 2, submission).
 - Conventional Commits: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`, `build:`, `ci:` with optional scope, e.g. `feat(db): add meetups and rsvps tables with RLS`.
 - Keep commits condensed: one logical change per commit, no WIP/noise commits, short imperative subject (≤72 chars), body only when the why isn't obvious.
@@ -133,5 +142,16 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - [ ] Screen recording 10–15 min (user does this)
 - [ ] Exported AI session log (user exports from Claude Code)
 
+## Skills to use
+- DB / RLS / migrations / tests of policies: `supabase-postgres-best-practices` (project, `.claude/skills/`) — load before any SQL.
+- Supabase CLI, Auth, supabase-js, Edge Functions, RLS debugging: `supabase` (project).
+- Expo app (project, `.claude/skills/`): `expo-overview` first, then `expo-project-structure`, `expo-router`, `expo-data-fetching`, `expo-examples` (Supabase / maps samples).
+- Running the app/server to verify a change: `run`.
+- Before each PR: `security-review` (RLS, endpoints, home-location leaks) and `code-review`.
+- Commits: `caveman:caveman-commit` (Conventional Commits).
+- That is the full allowed set. Everything else is switched off for this project in `.claude/settings.local.json` (`skillOverrides`, `enabledPlugins`, `syncClaudeAiSkills: false`). Don't re-enable without the user asking.
+- `skillOverrides` does not apply to plugin skills (Claude Code returns "on" for `source === "plugin"`). To keep only part of a plugin: disable the plugin per project and vendor the needed skills. That's why the Expo plugin is off and 5 of its skills are copied from `expo@claude-plugins-official` v1.13.9 (MIT, LICENSE in each folder). The caveman plugin stays on whole because its hooks drive the reply style; its extra skills can't be pruned individually.
+- Supabase skills are pinned in `skills-lock.json` (restore with `npx skills experimental_install`). The Expo skills are vendored and not in the lock file.
+
 ## Local environment notes
-Node 24, npm 11, pnpm 11, git, Docker 20.10 present. **Supabase CLI and Deno not installed** (use `npx supabase` or install). Windows 10, Git Bash + PowerShell.
+Node 24, npm 11, pnpm 11, git. Windows 10, Git Bash + PowerShell. RAM is limited, so **don't use Docker**: the DB is a hosted Supabase project, driven with `npx supabase@2.122.0` (link, `db push --include-seed`, `db reset --linked`, `functions deploy --use-api`). Deno isn't installed or needed. Tests run against the hosted project.
