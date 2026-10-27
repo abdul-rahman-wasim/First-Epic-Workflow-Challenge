@@ -1,6 +1,6 @@
 # Note — Altair group meetups slice
 
-> Draft. Sections marked *(to fill)* are completed as the build progresses.
+Run instructions are in [README.md](README.md). The build plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## Product decision: approximate area until RSVP
 
@@ -36,11 +36,7 @@ Example: North gate, Linden Park, in a town with only two parks nearby. At 800 m
 
 **Why it isn't in this slice.** It needs either a curated places dataset or enough meeting history to be meaningful, and both are outside the provided files. The slice ships the fixed grid, with the cell size as a single constant, and documents k-anonymity as the next step.
 
-### Other limits of this approach
-
-- **RSVP is not a trust signal.** Any member can RSVP, read the exact spot and withdraw. The approximate area stops casual exposure, not a determined group member. The real boundary is group membership.
-- **Free-text titles can leak the spot** ("Loop from North gate"). The create screen warns against it, but the rule protects coordinates and place names, not the creator's own words.
-- Members learning each other's routines is accepted as normal for a group walk. Outsiders see none of it.
+Other limits (RSVP is not a trust signal; free-text titles) are under Spec pushback. Members learning each other's routines is accepted as normal for a group walk, and outsiders see none of it.
 
 ## Architecture choices
 
@@ -62,7 +58,12 @@ Each was rejected for the reason given.
 
 ## What I directed, what I reviewed or fixed by hand
 
-*(being filled during the build)*
+**How I worked:**
+- **The AI tool:** Claude Code. I directed it through a plan file (docs/PLAN.md) and project rules (CLAUDE.md).
+- **Branches and commits:** one feature branch per phase. I approved every commit's files and message before it was made, and reviewed and merged every PR.
+- **Reviews:** before each PR I had it run a security review and a code review, then decided which findings to fix.
+- **Testing:** I tested every screen on my Android phone (Expo Go).
+- **Environment:** the database starter booted in about 10 minutes on a hosted project. I skipped Docker deliberately because RAM on my machine is limited, so the CLI drives the hosted project (link, push, reset, deploy).
 
 **Database phase: what I caught or changed after the AI's first version**
 - **Random offset → grid.** The first proposal gave each meetup a random offset. I questioned how it behaves in small towns. That led to the overlap problem with recurring meetups (circles intersect at the real spot) and to the grid design, plus the k-anonymity section above.
@@ -89,15 +90,29 @@ Each was rejected for the reason given.
   - place suggestions as you type, which fill the name and drop the pin
 - **Geocoding choice.** Suggestions come from Photon (OpenStreetMap data), not the phone's geocoder: on Android the phone's geocoder needs the location permission, and this feature should never ask where you are. Only the typed public place name is sent.
 - **Geocoding catches.** A first "Find on map" button used Nominatim, but Nominatim's usage policy forbids autocomplete, hence Photon. Also checked by hand: an unbounded search for "Linden Park" jumped to Adelaide, Australia, so results are bounded to ~50 km around the map view.
+- **Bonus (a), edit a meetup: done.** Creator-only `PATCH` through the same Zod layer, an RLS update policy, and the 3-hour rule re-checked when the start changes. Cancelled and started meetups are frozen, and a moved point recomputes the approximate area. 20 access tests cover it, plus an edit screen sharing the create form. The Supabase advisor flagged two permissive UPDATE policies, so cancel and edit became one policy.
+- **Bonus (b), live avatars over Realtime: not done.** I started it, then dropped it to finish the required write-up. Its main open question was privacy rather than code: broadcasting members' live positions is location sharing, so a demo would have used simulated walkers, behind Realtime authorisation limited to group members.
 - **Process slip.** One PR (#8) was merged by the agent, not by me: a create-and-merge command executed even though I interrupted it. The changes were already approved commit by commit, and I reviewed the merged PR afterwards. The agent now only opens PRs.
 - **Secrets.** The AI generated the `meetup_api` password itself and used it in commands. I had it rotated by hand and made a rule that the AI never reads `.env` values.
 
 ## One thing I'd refuse to build first
 
-*(to fill)*
+**"Meetups near you", or anything else derived from a member's home location.** That covers sorting or filtering by distance from home, a map that opens centred on home, and "neighbours walking near you".
+
+- **It's the obvious next request** for a map-centred neighbourhood app, which is exactly why I'd refuse it first.
+- **The home location is the most sensitive data the app holds.** It's where a person, and their dog, can be found at night.
+- **Even a "derived" feature leaks it.** Distances from home, sent to the client or used for sorting, can be triangulated back to the home point. The spec forbids it in this slice for that reason.
+- **What I'd need before building it:** explicit opt-in consent, server-side coarsening (k-anonymity, as described above, applied to homes), and a threat model for stalking. That's a design project, not a feature ticket.
 
 ## Spec pushback
 
-*(to fill: see docs/PLAN.md §14 for candidates)*
-
+- **RSVP is not a trust signal.** Any group member can RSVP, read the exact spot, then withdraw. The approximate area stops casual exposure, not a determined member. The real privacy boundary is group membership, and the spec should say what an RSVP is meant to protect.
+- **Approximation can't stop inference in sparse areas.** Where only one public place lies inside the area, the circle names the spot. The fix is k-anonymity over a dataset of public places (see above), not a bigger fixed radius.
+- **Free-text titles can leak the spot.** "Loop from North gate" defeats the approximate area. The rule protects coordinates and place names, not the creator's own words. The app warns, but the spec should acknowledge it.
+- **The spec is silent on time and ownership edge cases.** I made these assumptions; each is enforced and tested:
+  - Withdraw stays allowed after a meetup starts; only *new* RSVPs are blocked.
+  - The creator can cancel a meetup that has started.
+  - A creator who leaves the group loses cancel and edit rights, which leaves the meetup without anyone who can cancel it.
+  - Deleting a user cascades away the meetups they created, including other members' RSVPs.
+  - The host isn't an "attendee": seed creators haven't RSVP'd, so the app treats hosting as going and doesn't offer them an RSVP.
 - **Joining a group has no path.** Group and membership management is out of scope, so a user in no group (Taylor) can only see an empty state. Found in phone testing. A real launch needs an invite or join-request flow, approved by a group member, before the meetup feature is useful to newcomers. The slice's empty state says "ask a group organiser to add you" instead of leaving a dead end.
