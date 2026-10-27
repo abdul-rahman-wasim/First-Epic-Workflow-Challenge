@@ -6,10 +6,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc -p packages/shared --noEmit",
-    "test:unit": "vitest run --project shared"
+    "typecheck": "tsc -p packages/shared --noEmit && tsc -p server --noEmit",
+    "test:unit": "vitest run --project shared --project server"
   },
   "devDependencies": {
+    "@types/node": "24.19.2",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
   }

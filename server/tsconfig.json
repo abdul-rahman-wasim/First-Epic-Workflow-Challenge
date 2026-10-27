@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // Deno needs explicit .ts extensions on relative imports.
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

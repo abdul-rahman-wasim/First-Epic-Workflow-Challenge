@@ -1,0 +1,16 @@
+{
+  "name": "@altair/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/app.ts",
+  "exports": {
+    ".": "./src/app.ts"
+  },
+  "dependencies": {
+    "@altair/shared": "workspace:*",
+    "hono": "4.13.14",
+    "jose": "6.2.13",
+    "postgres": "3.4.9"
+  }
+}

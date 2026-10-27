@@ -64,7 +64,7 @@ Automated tests proving access for four personas — outsider, member not RSVP'd
 - multi-group case (Riley Chen: both groups, RSVP'd only to "Saturday morning loop") incl. what map data returns per meetup;
 - home location never present in any response;
 - past/now `starts_at` rejected by the server.
-Tests run against a real Supabase (local), signing in as seed users. Reset DB to a known state before the suite.
+Tests run against the real hosted Supabase project (no Docker), signing in as seed users. Reset DB to a known state before the suite.
 
 ## Seed cast (password for all: `altair-fixture-pass`, email `<firstname>@example.test`)
 | Persona | Groups | Role |
@@ -113,6 +113,7 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Commit history is graded. Follow the Git workflow below.
 - Never commit secrets (`.env`, service role key, map tokens). Provide `.env.example`.
 - **Never read, print, grep or pass values from `.env` files.** The user adds and updates every secret. Claude only edits `.env.example` (empty keys) and tells the user which keys to fill. Code may load `.env` at runtime (API, tests); Claude never inspects the values. Never generate secrets on the user's behalf; give the user a command to run in their own terminal instead.
+- **Private keys never enter the repo** (`*.key`, `*.pem`, anything containing `PRIVATE KEY`; gitignored). Public CA certificates are fine: `server/certs/supabase-ca.crt` is Supabase's public root CA, embedded in `server/src/supabase-ca.ts`, and a unit test checks it holds no private key.
 - Every migration is additive and timestamped; `supabase db reset` from clean must work.
 - When proposing SQL/RLS, state which persona can do what and how a test proves it.
 - Report failures and dead ends honestly — they are part of the log and are graded. Don't paper over a failing test.
