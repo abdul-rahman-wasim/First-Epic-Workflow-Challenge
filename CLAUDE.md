@@ -112,6 +112,7 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Required scope first. No bonus until Parts 1–3 are done.
 - Commit history is graded. Follow the Git workflow below.
 - Never commit secrets (`.env`, service role key, map tokens). Provide `.env.example`.
+- **Never read, print, grep or pass values from `.env` files.** The user adds and updates every secret. Claude only edits `.env.example` (empty keys) and tells the user which keys to fill. Code may load `.env` at runtime (API, tests); Claude never inspects the values. Never generate secrets on the user's behalf; give the user a command to run in their own terminal instead.
 - Every migration is additive and timestamped; `supabase db reset` from clean must work.
 - When proposing SQL/RLS, state which persona can do what and how a test proves it.
 - Report failures and dead ends honestly — they are part of the log and are graded. Don't paper over a failing test.
