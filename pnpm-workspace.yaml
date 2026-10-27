@@ -2,6 +2,7 @@ packages:
   - packages/*
   - server
   - tests
+  - app
 
 # Metro (Expo) resolves workspace packages reliably only with a flat node_modules.
 nodeLinker: hoisted
