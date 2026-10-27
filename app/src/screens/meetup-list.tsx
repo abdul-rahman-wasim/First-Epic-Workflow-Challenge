@@ -108,7 +108,11 @@ function Meetups({ query }: { query: ReturnType<typeof useGroupMeetups> }) {
 function MeetupRow({ meetup }: { meetup: MeetupListItem }) {
   const cancelled = meetup.status === 'cancelled';
   return (
-    <View style={styles.row}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push({ pathname: '/meetups/[id]', params: { id: meetup.id } })}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       <View style={styles.rowTop}>
         <Text style={[styles.rowTitle, cancelled && styles.struck]} numberOfLines={1}>
           {meetup.title}
@@ -121,7 +125,7 @@ function MeetupRow({ meetup }: { meetup: MeetupListItem }) {
         {meetup.isCreator && <Tag icon="star" label="Hosting" color="#8a5a00" bg="#fff3d6" />}
         {meetup.hasRsvp && <Tag icon="checkmark-circle" label="Going" color="#1e6b3a" bg="#e3f4e8" />}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -145,6 +149,7 @@ const styles = StyleSheet.create({
   chipTextOn: { color: '#fff' },
   row: { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#ccc', gap: 2 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowPressed: { backgroundColor: '#eef3f8' },
   rowTitle: { fontSize: 17, fontWeight: '600', flexShrink: 1 },
   struck: { textDecorationLine: 'line-through', color: '#888' },
   badge: { color: '#b3261e', fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
