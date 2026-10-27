@@ -23,6 +23,26 @@ export const useGroupMeetups = (groupId: string | undefined) =>
     enabled: !!groupId,
   });
 
+export const useMeetup = (id: string) =>
+  useQuery({ queryKey: keys.meetup(id), queryFn: () => api('GET', `/meetups/${id}`, MeetupResponse) });
+
+// RSVP, withdraw and cancel answer with the caller's updated view (e.g. exact point after RSVP),
+// so the detail updates straight from the response; the group list is refreshed behind it.
+function useMeetupWrite(method: 'PUT' | 'DELETE' | 'POST', path: (id: string) => string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(method, path(id), MeetupResponse),
+    onSuccess: (body) => {
+      qc.setQueryData(keys.meetup(body.meetup.id), body);
+      return qc.invalidateQueries({ queryKey: keys.groupMeetups(body.meetup.groupId) });
+    },
+  });
+}
+
+export const useRsvp = () => useMeetupWrite('PUT', (id) => `/meetups/${id}/rsvp`);
+export const useWithdraw = () => useMeetupWrite('DELETE', (id) => `/meetups/${id}/rsvp`);
+export const useCancelMeetup = () => useMeetupWrite('POST', (id) => `/meetups/${id}/cancel`);
+
 export function useCreateMeetup() {
   const qc = useQueryClient();
   return useMutation({

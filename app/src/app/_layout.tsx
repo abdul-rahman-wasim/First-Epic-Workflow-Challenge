@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
 import { ApiRequestError } from '@/lib/api';
 import { AuthProvider, useAuth } from '@/lib/auth';
 
@@ -35,17 +35,20 @@ function RootStack() {
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="index" options={{ title: 'Meetups' }} />
         <Stack.Screen name="meetups/new" options={{ title: 'New meetup', presentation: 'modal' }} />
+        <Stack.Screen name="meetups/[id]" options={{ title: 'Meetup' }} />
       </Stack.Protected>
     </Stack>
   );
 }
 
+// Light theme only (app.json userInterfaceStyle: light): screens use fixed light colours,
+// so following a phone's dark mode made text black on black.
 export default function RootLayout() {
-  const scheme = useColorScheme();
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <ThemeProvider value={DefaultTheme}>
+          <StatusBar style="dark" />
           <RootStack />
         </ThemeProvider>
       </AuthProvider>
