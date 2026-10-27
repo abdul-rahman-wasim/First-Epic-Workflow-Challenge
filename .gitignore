@@ -1,0 +1,44 @@
+# Challenge brief and provided files (kept locally, not committed)
+*.pdf
+altair-feature-spec.html
+altair-schema-starter.zip
+altair-seed-data.sql
+altair-schema-starter/
+
+# Dependencies
+node_modules/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Expo / React Native
+.expo/
+web-build/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
