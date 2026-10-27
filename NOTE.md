@@ -90,3 +90,5 @@ Each was rejected for the reason given.
 ## Spec pushback
 
 *(to fill: see docs/PLAN.md §14 for candidates)*
+
+- **Joining a group has no path.** Group and membership management is out of scope, so a user in no group (Taylor) can only see an empty state. Found in phone testing. A real launch needs an invite or join-request flow, approved by a group member, before the meetup feature is useful to newcomers. The slice's empty state says "ask a group organiser to add you" instead of leaving a dead end.

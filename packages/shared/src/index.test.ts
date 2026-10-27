@@ -29,6 +29,22 @@ describe('CreateMeetupInput', () => {
   ])('rejects %s', (_, patch) => {
     expect(CreateMeetupInput.safeParse({ ...valid, ...patch }).success).toBe(false);
   });
+
+  it('a malformed start gets one clear message, not "must be in the future" too', () => {
+    const r = CreateMeetupInput.safeParse({ ...valid, startsAt: 'tomorrow' });
+    expect(r.error!.issues.map((i) => i.message)).toEqual(['Pick a start date and time']);
+  });
+
+  it('explains every problem in plain words', () => {
+    const r = CreateMeetupInput.safeParse({ groupId: valid.groupId, title: ' ', startsAt: valid.startsAt, placeName: '' });
+    const byField = Object.fromEntries(r.error!.issues.map((i) => [String(i.path[0]), i.message]));
+    expect(byField).toEqual({
+      title: 'Add a title',
+      placeName: 'Name the meeting point',
+      lat: 'Tap the map to place the meeting point',
+      lng: 'Tap the map to place the meeting point',
+    });
+  });
 });
 
 describe('MeetupDetail', () => {
