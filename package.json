@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc -p packages/shared --noEmit",
+    "typecheck": "tsc -p packages/shared --noEmit && tsc -p server --noEmit",
     "test:unit": "vitest run --project shared"
   },
   "devDependencies": {
