@@ -20,15 +20,26 @@ export type MeetupIdParam = z.infer<typeof MeetupIdParam>;
 
 // Strict: unknown keys (e.g. createdBy, status) are rejected, not ignored.
 // The future-start rule uses the clock of whoever parses: authoritative on the server.
+// Messages are user-facing: the app and the API show the same wording.
+const pinMissing = { error: (i: { input: unknown }) => (i.input === undefined ? 'Tap the map to place the meeting point' : 'Invalid meeting point') };
+
 export const CreateMeetupInput = z.strictObject({
-  groupId: z.uuid(),
-  title: z.string().trim().min(1).max(80),
-  startsAt: IsoDateTime.refine((v) => Date.parse(v) > Date.now(), {
-    message: 'Start time must be in the future',
-  }),
-  placeName: z.string().trim().min(1).max(120),
-  lat: Latitude,
-  lng: Longitude,
+  groupId: z.uuid({ error: 'Pick a group' }),
+  title: z
+    .string({ error: 'Add a title' })
+    .trim()
+    .min(1, { error: 'Add a title' })
+    .max(80, { error: 'Keep the title to 80 characters or fewer' }),
+  startsAt: z.iso
+    .datetime({ offset: true, error: 'Pick a start date and time' })
+    .refine((v) => Date.parse(v) > Date.now(), { error: 'Start time must be in the future' }),
+  placeName: z
+    .string({ error: 'Name the meeting point' })
+    .trim()
+    .min(1, { error: 'Name the meeting point' })
+    .max(120, { error: 'Keep the place name to 120 characters or fewer' }),
+  lat: z.number(pinMissing).min(-90, { error: 'Invalid meeting point' }).max(90, { error: 'Invalid meeting point' }),
+  lng: z.number(pinMissing).min(-180, { error: 'Invalid meeting point' }).max(180, { error: 'Invalid meeting point' }),
 });
 export type CreateMeetupInput = z.infer<typeof CreateMeetupInput>;
 
