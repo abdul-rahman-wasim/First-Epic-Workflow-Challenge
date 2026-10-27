@@ -5,6 +5,8 @@ import {
   GroupMeetupsResponse,
   MeetupIdParam,
   MeetupResponse,
+  MIN_LEAD_HOURS,
+  MIN_LEAD_MESSAGE,
   MyGroupsResponse,
   type ErrorCode,
 } from '@altair/shared';
@@ -116,11 +118,9 @@ export function createApp({ sql, verifyToken }: Deps) {
     const input = parse(CreateMeetupInput, await c.req.json().catch(() => undefined));
     const body = await db(c, async (tx) => {
       if (!(await q.groupVisible(tx, input.groupId))) throw new HttpError('not_found', 'This group isn’t available');
-      // Re-check on the DB clock, which the insert policy uses; the API clock may differ.
-      if (!(await q.startsInFuture(tx, input.startsAt))) {
-        throw new HttpError('invalid_input', 'Some details need fixing', [
-          { path: 'startsAt', message: 'Start time must be in the future' },
-        ]);
+      // Re-check the lead time on the DB clock; the API's clock may differ.
+      if (!(await q.startsAfterLead(tx, input.startsAt, MIN_LEAD_HOURS))) {
+        throw new HttpError('invalid_input', 'Some details need fixing', [{ path: 'startsAt', message: MIN_LEAD_MESSAGE }]);
       }
       const id = await q.createMeetup(tx, input);
       return detailOr404(tx, id);

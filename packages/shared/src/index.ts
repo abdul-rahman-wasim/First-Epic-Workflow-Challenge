@@ -14,6 +14,11 @@ export const Longitude = z.number(pinMissing).min(-180, badPoint).max(180, badPo
 export const IsoDateTime = z.iso.datetime({ offset: true, error: 'Pick a start date and time' });
 export const MeetupStatus = z.enum(['scheduled', 'cancelled']);
 
+// Product rule: a meetup must be announced this far ahead. The API re-checks it on the DB clock.
+export const MIN_LEAD_HOURS = 3;
+export const MIN_LEAD_MS = MIN_LEAD_HOURS * 3_600_000;
+export const MIN_LEAD_MESSAGE = `Start at least ${MIN_LEAD_HOURS} hours from now, so members have time to see it`;
+
 // ---------- requests ----------
 
 export const GroupIdParam = z.strictObject({ groupId: z.uuid() });
@@ -31,9 +36,9 @@ export const CreateMeetupInput = z.strictObject({
     .trim()
     .min(1, { error: 'Add a title' })
     .max(80, { error: 'Keep the title to 80 characters or fewer' }),
-  // An unparseable value already has a format issue; don't add "must be in the future" too.
-  startsAt: IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now(), {
-    error: 'Start time must be in the future',
+  // An unparseable value already has a format issue; don't add a lead-time message too.
+  startsAt: IsoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now() + MIN_LEAD_MS, {
+    error: MIN_LEAD_MESSAGE,
   }),
   placeName: z
     .string({ error: 'Name the meeting point' })
