@@ -32,6 +32,9 @@ web-build/
 supabase/.branches/
 supabase/.temp/
 
+# Claude Code personal settings
+.claude/settings.local.json
+
 # OS / editor
 .DS_Store
 Thumbs.db

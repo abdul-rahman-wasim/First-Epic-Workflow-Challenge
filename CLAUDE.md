@@ -117,6 +117,8 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - Branches: `main` (submission-ready) ← `dev` (integration) ← `feat/<name>` (one per feature).
 - Start every new feature on a fresh branch cut from latest `dev`: `git switch dev && git switch -c feat/<name>`.
 - Finished feature: PR `feat/<name>` → `dev`. Then cut the next feature branch from updated `dev`. Never work directly on `dev` or `main`.
+- Remote: `origin` = https://github.com/abdul-rahman-wasim/First-Epic-Workflow-Challenge (public). Open PRs with `gh pr create --base dev`.
+- `gh` acts as `abdul-rahman-wasim` in this project only: `.claude/settings.local.json` sets `GH_CONFIG_DIR` to a separate gh config whose active account is the repo owner (tokens stay in the OS keyring). Global gh account stays `Team1-Sportech` — never `gh auth switch`. If `gh auth status` shows the wrong account, fall back to prefixing `GH_TOKEN=$(gh auth token --user abdul-rahman-wasim)`.
 - `dev` → `main` when a milestone is stable (e.g. end of Part 1, Part 2, submission).
 - Conventional Commits: `feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`, `build:`, `ci:` with optional scope, e.g. `feat(db): add meetups and rsvps tables with RLS`.
 - Keep commits condensed: one logical change per commit, no WIP/noise commits, short imperative subject (≤72 chars), body only when the why isn't obvious.
@@ -132,6 +134,17 @@ Bonus (only after required work is done and green): (a) creator-only edit endpoi
 - [ ] README run instructions (DB, seed, endpoints, app, tests from clean)
 - [ ] Screen recording 10–15 min (user does this)
 - [ ] Exported AI session log (user exports from Claude Code)
+
+## Skills to use
+- DB / RLS / migrations / tests of policies: `supabase-postgres-best-practices` (project, `.claude/skills/`) — load before any SQL.
+- Supabase CLI, Auth, supabase-js, Edge Functions, RLS debugging: `supabase` (project).
+- Expo app (project, `.claude/skills/`): `expo-overview` first, then `expo-project-structure`, `expo-router`, `expo-data-fetching`, `expo-examples` (Supabase / maps samples).
+- Running the app/server to verify a change: `run`.
+- Before each PR: `security-review` (RLS, endpoints, home-location leaks) and `code-review`.
+- Commits: `caveman:caveman-commit` (Conventional Commits).
+- That is the full allowed set. Everything else is switched off for this project in `.claude/settings.local.json` (`skillOverrides`, `enabledPlugins`, `syncClaudeAiSkills: false`). Don't re-enable without the user asking.
+- `skillOverrides` does not apply to plugin skills (Claude Code returns "on" for `source === "plugin"`). To keep only part of a plugin: disable the plugin per project and vendor the needed skills. That's why the Expo plugin is off and 5 of its skills are copied from `expo@claude-plugins-official` v1.13.9 (MIT, LICENSE in each folder). The caveman plugin stays on whole because its hooks drive the reply style; its extra skills can't be pruned individually.
+- Supabase skills are pinned in `skills-lock.json` (restore with `npx skills experimental_install`). The Expo skills are vendored and not in the lock file.
 
 ## Local environment notes
 Node 24, npm 11, pnpm 11, git, Docker 20.10 present. **Supabase CLI and Deno not installed** (use `npx supabase` or install). Windows 10, Git Bash + PowerShell.
