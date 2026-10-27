@@ -39,6 +39,15 @@ class HttpError extends Error {
 
 const notFound = () => new HttpError('not_found', 'Meetup not found');
 
+// Visibility and state are pre-checked, so DB rejections here mean bad data or a race.
+function fromDbError(err: unknown): HttpError {
+  const pg = err as { code?: string; constraint_name?: string };
+  if (pg.code === '23514' && pg.constraint_name) return new HttpError('invalid_input', 'Invalid input');
+  if (pg.code === '23514') return new HttpError('conflict', 'Meetup is not open for this action'); // trigger raise
+  if (pg.code === '42501') return new HttpError('conflict', 'Meetup changed, please refresh'); // RLS check
+  return new HttpError('internal', 'Something went wrong');
+}
+
 function parse<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
   const r = schema.safeParse(value);
   if (r.success) return r.data;
@@ -55,12 +64,7 @@ export function createApp({ sql, verifyToken }: Deps) {
   const app = new Hono<Env>().basePath('/api');
 
   app.onError((err, c) => {
-    const e =
-      err instanceof HttpError
-        ? err
-        : (err as { code?: string }).code === '23514' // DB rule (e.g. RSVP raced a cancel)
-          ? new HttpError('conflict', 'Meetup is not open for this action')
-          : new HttpError('internal', 'Something went wrong');
+    const e = err instanceof HttpError ? err : fromDbError(err);
     if (e.code === 'internal') console.error(err);
     const body = { error: { code: e.code, message: e.message, ...(e.issues && { issues: e.issues }) } };
     return c.json(ApiError.parse(body), STATUS[e.code]);
@@ -112,6 +116,12 @@ export function createApp({ sql, verifyToken }: Deps) {
     const input = parse(CreateMeetupInput, await c.req.json().catch(() => undefined));
     const body = await db(c, async (tx) => {
       if (!(await q.groupVisible(tx, input.groupId))) throw new HttpError('not_found', 'Group not found');
+      // Re-check on the DB clock, which the insert policy uses; the API clock may differ.
+      if (!(await q.startsInFuture(tx, input.startsAt))) {
+        throw new HttpError('invalid_input', 'Invalid input', [
+          { path: 'startsAt', message: 'Start time must be in the future' },
+        ]);
+      }
       const id = await q.createMeetup(tx, input);
       return detailOr404(tx, id);
     });
@@ -125,7 +135,8 @@ export function createApp({ sql, verifyToken }: Deps) {
       if (!t) throw notFound();
       if (!t.isCreator) throw new HttpError('forbidden', 'Only the creator can cancel this meetup');
       if (t.status === 'cancelled') throw new HttpError('conflict', 'Meetup is already cancelled');
-      await q.cancelMeetup(tx, meetupId);
+      // 0 rows: a concurrent cancel or membership change won; RLS skipped the row.
+      if (!(await q.cancelMeetup(tx, meetupId))) throw new HttpError('conflict', 'Meetup is already cancelled');
       return detailOr404(tx, meetupId);
     });
     return send(c, MeetupResponse, body);

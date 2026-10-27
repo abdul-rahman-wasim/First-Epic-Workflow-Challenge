@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from 'jose';
 
 export type Claims = JWTPayload & { sub: string; role: string };
 export type VerifyToken = (token: string) => Promise<Claims | null>;
@@ -12,19 +12,24 @@ export function createVerifier(supabaseUrl: string): VerifyToken {
   const jwks = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
 
   return async (token) => {
+    let payload: JWTPayload;
     try {
       // Asymmetric only: Supabase signing keys are ES256 or RS256; never accept HS* or none.
-      const { payload } = await jwtVerify(token, jwks, {
+      ({ payload } = await jwtVerify(token, jwks, {
         issuer,
         audience: 'authenticated',
         algorithms: ['ES256', 'RS256'],
-      });
-      if (payload.role !== 'authenticated' || typeof payload.sub !== 'string' || !UUID.test(payload.sub)) {
-        return null;
-      }
-      return payload as Claims;
-    } catch {
+      }));
+    } catch (e) {
+      // Bad token → 401. JWKS unreachable or timing out → rethrow (500), not a fake sign-out.
+      if (e instanceof errors.JOSEError && !(e instanceof errors.JWKSTimeout)) return null;
+      throw e;
+    }
+
+    const anonymous = payload.is_anonymous === true;
+    if (payload.role !== 'authenticated' || anonymous || typeof payload.sub !== 'string' || !UUID.test(payload.sub)) {
       return null;
     }
+    return payload as Claims;
   };
 }

@@ -52,7 +52,8 @@ export async function groupMeetups(tx: Tx, groupId: string): Promise<MeetupListI
     select ${meetupColumns(tx)}
     from public.meetups m join public.groups g on g.id = m.group_id
     where m.group_id = ${groupId}
-    order by m.starts_at, m.id`;
+    -- upcoming first (soonest first), then past (most recent first)
+    order by m.starts_at < now(), abs(extract(epoch from m.starts_at - now())), m.id`;
   return rows.map(toListItem);
 }
 
@@ -105,8 +106,15 @@ export async function createMeetup(tx: Tx, input: CreateMeetupInput): Promise<st
   return m!.id;
 }
 
-export async function cancelMeetup(tx: Tx, meetupId: string): Promise<void> {
-  await tx`update public.meetups set status = 'cancelled' where id = ${meetupId}`;
+export async function startsInFuture(tx: Tx, startsAt: string): Promise<boolean> {
+  const [r] = await tx<{ ok: boolean }[]>`select ${startsAt}::timestamptz > now() as ok`;
+  return r!.ok;
+}
+
+// Returns false when RLS matched no row (not creator, not member, or already cancelled).
+export async function cancelMeetup(tx: Tx, meetupId: string): Promise<boolean> {
+  const r = await tx`update public.meetups set status = 'cancelled' where id = ${meetupId}`;
+  return r.count > 0;
 }
 
 export async function rsvp(tx: Tx, meetupId: string): Promise<void> {
