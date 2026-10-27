@@ -2,6 +2,7 @@
 import postgres from 'postgres';
 import { createApp } from '../../../server/src/app.ts';
 import { createVerifier } from '../../../server/src/auth.ts';
+import { SUPABASE_ROOT_CA } from '../../../server/src/supabase-ca.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
@@ -13,7 +14,7 @@ const sql = postgres({
   database: 'postgres',
   username: `meetup_api.${projectRef}`,
   password: Deno.env.get('MEETUP_API_DB_PASSWORD')!,
-  ssl: 'require',
+  ssl: { ca: SUPABASE_ROOT_CA, rejectUnauthorized: true }, // verify chain + hostname
   prepare: false, // required by transaction-mode pooling
   max: 3,
   idle_timeout: 20,

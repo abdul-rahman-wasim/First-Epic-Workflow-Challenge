@@ -13,7 +13,12 @@ export function createVerifier(supabaseUrl: string): VerifyToken {
 
   return async (token) => {
     try {
-      const { payload } = await jwtVerify(token, jwks, { issuer, audience: 'authenticated' });
+      // Asymmetric only: Supabase signing keys are ES256 or RS256; never accept HS* or none.
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer,
+        audience: 'authenticated',
+        algorithms: ['ES256', 'RS256'],
+      });
       if (payload.role !== 'authenticated' || typeof payload.sub !== 'string' || !UUID.test(payload.sub)) {
         return null;
       }
