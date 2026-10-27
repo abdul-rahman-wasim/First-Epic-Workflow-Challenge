@@ -44,7 +44,21 @@ Example: North gate, Linden Park, in a town with only two parks nearby. At 800 m
 
 ## Architecture choices
 
-*(to fill: write model C, Edge Functions with Hono, reads under RLS, alternatives considered)*
+**The app's token has no database privileges.** Supabase Auth issues the user's token. The app uses it for exactly one thing: calling our API, a Hono app running as a Supabase Edge Function. Every read and write passes through that API, and the shared Zod schemas validate every request and every response.
+
+**The API can't bypass row-level security.** It connects to Postgres as `meetup_api`, a role created with `nobypassrls` that holds only the grants this slice needs. For each request it verifies the token and puts the verified claims on the transaction, so `auth.uid()` is the real user. All access rules are RLS policies on that role, reads and writes alike: membership, creator-only cancel, no RSVP when cancelled or started, exact location only for attendees. If the claims are ever missing, `auth.uid()` is null and every policy returns nothing. A bug fails closed instead of becoming a superuser query.
+
+**Security doesn't depend on dashboard settings.** `anon` and `authenticated` have every privilege revoked on the slice tables. Even with the Data API enabled, or on a local stack with Supabase's default grants, a user token calling PostgREST directly reads and writes nothing. A test proves it.
+
+**Alternatives I considered:**
+- Granting writes to `authenticated`: the app could skip Zod.
+- The service-role key plus functions: it bypasses RLS, so cancel wouldn't be RLS-enforced, and the key is god mode.
+- Connecting as `postgres` and switching role per request: one forgotten `set role` means a superuser query.
+- A server-minted JWT: it needs a custom signing key, and a leak forges any user.
+
+Each was rejected for the reason given.
+
+**Cost:** three read endpoints the app could otherwise have skipped, one manual step to set the `meetup_api` password (it never goes in git), and an extra network hop for reads.
 
 ## What I directed, what I reviewed or fixed by hand
 

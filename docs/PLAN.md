@@ -1,6 +1,6 @@
 # Build plan — Altair group meetups slice
 
-Status: **v4, decisions resolved 2026-10-27**: approximate area (fixed grid) · write model C · Edge Functions · Android phone with Expo Go · hosted Supabase via CLI.
+Status: **v4, decisions resolved 2026-10-27**: approximate area (fixed grid) · access model D (app has no DB privileges; API connects as non-bypass role) · Edge Functions · Android phone with Expo Go · hosted Supabase via CLI.
 
 ## 1. What we are building
 
@@ -18,7 +18,7 @@ Out of scope: sign-up, web, group management, notifications, live location, edit
 |---|---|---|
 | DB | **Hosted Supabase (free tier), managed with the Supabase CLI 2.122 via `npx`** | No Docker, which saves RAM on the dev machine. The CLI still owns migrations: `link`, `db push --include-seed`, `db reset --linked` |
 | Contract | `packages/shared`, Zod 4.6, TS source imported directly (no build step) | One module that both the server and Metro resolve |
-| Write layer | Hono 4 app deployed as a **Supabase Edge Function** (`functions deploy --use-api`, no Docker), the same Hono app run in-process on Node for tests | Phone reaches it over the internet (no LAN/firewall setup); reviewer runs no server; tests stay fast. Fallback: run the same Hono app on Node (`@hono/node-server`) |
+| API layer (reads + writes) | Hono 4 app deployed as a **Supabase Edge Function** (`functions deploy --use-api`, no Docker), the same Hono app run in-process on Node for tests | Phone reaches it over the internet (no LAN/firewall setup); reviewer runs no server; tests stay fast. Fallback: run the same Hono app on Node (`@hono/node-server`) |
 | App | Expo SDK 58, Expo Router, supabase-js 2.118, TanStack Query, `react-native-maps` | **Runs in Expo Go on your phone.** No emulator, no map key |
 | Tests | Vitest 5 against the hosted project | Real RLS, real JWTs, no mocks |
 | Workspace | pnpm workspaces (`node-linker=hoisted` for Metro) | One lockfile, shared package linked |
@@ -84,81 +84,78 @@ Members learning routines is accepted as normal for a group walk (not a pushback
 
 Alternative: exact location for all members. Simpler, but the spec then requires the place name to be shown, which loses the privacy story.
 
-## 5. Access model (database-enforced)
+## 5. Access model (decided: Option D, database-enforced)
 
-**Grants (the Data API is opt-in since 2026):** `anon` gets nothing. `authenticated` gets SELECT only:
-- `users (id, display_name)`: column grant. Home columns are never granted, so `select home_lat` errors with permission denied.
-- `groups`, `group_memberships`, `meetups`, `meetup_locations`, `rsvps`: select.
-- No INSERT/UPDATE/DELETE for `authenticated` on any table.
+**Principle:** the app's token has **no database privileges** on our tables. Every read and write goes through our API, which connects as a least-privilege role that **cannot bypass RLS**. All rules live in RLS policies keyed on `auth.uid()`.
 
-**RLS read policies (`to authenticated`). Every rule requires *current* membership:**
+### Roles and grants
+- `anon`, `authenticated`: `revoke all` on every slice table (starter tables included). Even with the Data API on, or on a local stack with default privileges, a user token reads and writes nothing.
+- `meetup_api`: created in a migration as `nologin nobypassrls`. After deploy, one manual step sets its password (`alter role meetup_api login password '…'`), so no secret ever sits in git. The Edge Function connects **as this role** through the Supabase pooler.
+  - select: `users (id, display_name)` (column grant, so home columns stay unreadable), `groups`, `group_memberships`, `meetups`, `meetup_locations`, `rsvps`
+  - insert: `meetups`, `meetup_locations`, `rsvps` · update `(status, cancelled_at)` on `meetups` · delete: `rsvps`
+- Per request, inside one transaction, the API runs `select set_config('request.jwt.claims', <verified claims>, true)`, so `auth.uid()` is the verified user.
+- **Fails closed:** if claims are missing, `auth.uid()` is null and every policy returns or permits nothing. A coding mistake can never become a superuser query, because the connection *is* the restricted role.
 
-| Table | Visible when |
-|---|---|
-| group_memberships | own rows (= "my groups") |
-| groups | caller is a member |
-| users | self, or shares a group with caller (attendee names) |
-| meetups | caller is a member of `group_id` (cancelled ones included) |
-| rsvps | caller is a member of the meetup's group |
-| meetup_locations | caller is a member of the group **and** (is the creator **or** has an RSVP) |
+### RLS policies (`to meetup_api`). Every rule requires *current* membership
 
-Membership checks go through `private.is_group_member(group_id)` (security definer, `search_path = ''`, in a non-exposed schema), using the `(select auth.uid())` caching pattern.
+| Table | Read when | Write when |
+|---|---|---|
+| group_memberships | own rows (= "my groups") | — |
+| groups | member | — |
+| users | self, or shares a group (attendee names) | — |
+| meetups | member of `group_id` (cancelled included) | insert: member and `created_by = auth.uid()` · update (cancel): `using (created_by = auth.uid() and member)` `with check (status = 'cancelled')` |
+| meetup_locations | member **and** (creator **or** has RSVP) | insert: caller created the parent meetup |
+| rsvps | member of the meetup's group | insert: `user_id = auth.uid()`, member, meetup scheduled, `starts_at > now()` · delete: own row |
 
-**Writes: decided, Option C.** In B and C alike, the app has no write path except the endpoint.
+Helpers `private.is_group_member(group_id)` and `private.can_see_exact(meetup_id)` are security definer, `search_path = ''`, in a schema that is never exposed and never granted to user roles. They avoid RLS recursion and use the `(select auth.uid())` caching pattern.
 
-*Alternatives considered and rejected:*
-- **A:** RLS write grants to `authenticated`. The app could skip Zod.
-- **B:** secret key plus functions. The service role bypasses RLS, so cancel wouldn't be RLS-enforced (details below).
-- **Server-minted JWT** with `role: meetup_writer`, sent through supabase-js. Same RLS guarantees as C without a direct DB connection, but it needs a custom asymmetric signing key imported into the project. That's fragile to set up and to explain, and a leaked signing key forges any user.
-- **Data API off, all reads through endpoints too.** The smallest attack surface, since the app never touches the DB directly. But it means about 4 extra read endpoints and the same RLS underneath. A good production hardening step; overkill for the slice. Goes in NOTE.md.
+Triggers cover what policies can't express:
+- block reopening and edits of any column other than status/cancelled_at
+- compute the grid-snapped approximate area on insert
+- delete a member's RSVPs for a group when their membership is removed
 
-*Option B: secret key + DB functions.* Write functions take `p_actor uuid`; execute is granted only to `service_role`. The server verifies the JWT, validates with Zod, and calls the function with the secret key.
-- Disadvantage 1, the big one: the brief says "enforce access with **row-level security** … only the creator cancels". The service role **bypasses RLS**, so the creator rule would live in function code, not in a policy. A grader can read that as "not RLS".
-- Disadvantage 2: the secret key is god mode. It bypasses every policy, home location included. A leak anywhere is total.
-- Disadvantage 3: the DB trusts `p_actor`. One plumbing bug in the server means impersonation.
-- Disadvantage 4: two access models, policies for reads and function code for writes.
+Before an RSVP or a cancel, the API takes `select … for share` / `for update` on the meetup row, so concurrent writes serialize.
 
-*Option C (recommended): server acts as the user through a door only it has.*
-- Migration creates the role `meetup_writer` (nologin, member of `authenticated`). Write grants go **only** to `meetup_writer`: insert/delete on `rsvps`, insert on `meetups`/`meetup_locations`, update(status, cancelled_at) on `meetups`.
-- The server verifies the caller's JWT, validates with Zod, then in one DB transaction runs `set local role meetup_writer` and `set_config('request.jwt.claims', <verified claims>, true)`. `auth.uid()` is now the real user.
-- **Writes pass through RLS policies** (`to meetup_writer`):
-  - RSVP insert: `user_id = auth.uid()`, member, meetup scheduled, `starts_at > now()`.
-  - RSVP delete: own row.
-  - Cancel update: `using (created_by = auth.uid() and member)`, `with check (status = 'cancelled')`.
-  - Create: member, `created_by = auth.uid()`.
-- Triggers handle what policies can't express: block reopening and edits of other columns, compute the approximate area on insert, delete RSVPs when a membership is removed.
-- The app can't write: its JWT role is `authenticated`, which has no write grants, and it can't become `meetup_writer`, because PostgREST only switches to the role in the signed JWT.
-- Before writing, the server takes `select … for share` on the meetup row, so a concurrent cancel and RSVP serialize.
-- Disadvantages of C:
-  - It needs the DB connection string (`SUPABASE_DB_URL`, built into Edge Functions). That's also a powerful secret, kept server-side only.
-  - There's more SQL in the server.
-  - An RLS denial is a generic error, so the server pre-reads the meetup to return 404/403/409 precisely.
-  - Risk to verify in phase 1: creating a role and `set role` on hosted Supabase through the pooler (transaction mode supports `set local`).
+### Why D (alternatives rejected)
+- **A:** write grants to `authenticated`. The app could skip Zod and write directly.
+- **B:** secret key plus functions. The service role bypasses RLS, so creator-only cancel would live in function code, not RLS. The key is god mode, and the DB trusts a passed-in actor id.
+- **C:** connect as `postgres`, then `set local role`. RLS for writes, but one forgotten `set role` means a query runs as a superuser-level role. It also depends on the Data API grants for reads.
+- **Server-minted JWT:** needs a custom signing key imported into the project. A leak forges any user.
+- D keeps C's guarantees and removes its failure mode. Security no longer depends on dashboard settings.
 
-**Errors:** order matters. **Visibility is checked first**, so a meetup that doesn't exist and one the caller can't see both return `404 Not found`. Only callers who can see the meetup get the `409 cancelled/started` or `403 not creator` errors. Otherwise an outsider could learn that a meetup exists, or that it has started.
+### Costs of D
+- About 3 read endpoints (about +1h).
+- One manual password step for `meetup_api`.
+- An extra hop for reads (phone → Edge Function → DB).
+- Verify first: the pooler accepts `meetup_api.<project-ref>` logins. If it doesn't, fall back to C.
+
+**Errors:** visibility is checked first. A missing meetup and a hidden one both return `404 Not found`, so outsiders learn nothing. Only callers who can see the meetup get `403 not creator` or `409 cancelled/started`. An RLS denial is a generic error, so the API pre-reads the meetup to choose the precise status.
 
 ## 6. Shared contract (`packages/shared`)
 
-- Inputs: `CreateMeetupInput` (groupId uuid, title trimmed 1..80, startsAt ISO-8601 with offset strictly in the future, placeName trimmed 1..120, lat −90..90, lng −180..180, finite), `MeetupIdParam`.
-- Outputs: `MyGroup`, `MeetupListItem`, `MeetupDetail` with `location` as a discriminated union `{kind:'exact', placeName, lat, lng} | {kind:'approximate', lat, lng, radiusM, label}`, `Attendee {userId, displayName}`, `ApiError`.
-- The server validates every request. The app parses every read response with the same schemas.
+- Inputs: `CreateMeetupInput` (groupId uuid, title trimmed 1..80, startsAt ISO-8601 with offset strictly in the future, placeName trimmed 1..120, lat −90..90, lng −180..180, finite), `MeetupIdParam`, `GroupIdParam`.
+- Outputs: `MyGroup`, `MeetupListItem`, `MeetupDetail` (with `attendees` and `location` as a discriminated union `{kind:'exact', placeName, lat, lng} | {kind:'approximate', lat, lng, radiusM, label}`), `ApiError`.
+- The API validates every request **and** parses every response through the output schema before sending, so unknown fields (like a home column) can't slip out. The app parses every response with the same schemas.
 
-## 7. Write API (`server/`)
+## 7. API (Hono app in a Supabase Edge Function)
 
 | Method | Path | Rule |
 |---|---|---|
-| POST | /meetups | member of group; start strictly in future (Zod and SQL) |
+| GET | /groups | caller's own groups |
+| GET | /groups/:id/meetups | member; soonest first; cancelled included |
+| GET | /meetups/:id | member; detail + attendees + location (exact or approximate per RLS) |
+| POST | /meetups | member of group; start strictly in future (Zod and RLS/trigger) |
 | POST | /meetups/:id/cancel | visible → creator → scheduled; final |
 | PUT | /meetups/:id/rsvp | visible → scheduled → not started; idempotent |
 | DELETE | /meetups/:id/rsvp | visible; own RSVP; allowed on cancelled and after start; idempotent |
 
 Errors are `{ error: { code, message, issues? } }`: 400 Zod, 401 token, 403 not creator, 404 hidden/missing, 409 cancelled/started.
 
-Reads (my groups, list, detail, attendees, map data) go **directly from the app to Supabase** under RLS with the user's session.
+The app uses supabase-js **only for sign-in** and the session. All data goes through these endpoints.
 
 ## 8. Tests (`tests/`, Vitest, against the hosted project)
 
-Setup: before the suite, `supabase db reset --linked` (or a fast fixture reset over the direct Postgres connection that restores seed PART 2). Sign in the personas with the publishable key and run the Hono app in-process. Owner-only fixtures (a started meetup, removing a membership) run over the direct `postgres` connection (DB password in `tests/.env`).
+Setup: before the suite, `supabase db reset --linked` (or a fast fixture reset over the direct Postgres connection that restores seed PART 2). Sign in the personas with the publishable key and run the Hono app in-process, connected as `meetup_api`. Owner-only fixtures (a started meetup, removing a membership) run over the direct `postgres` connection (DB password in `tests/.env`).
 
 | Persona / case | Must prove |
 |---|---|
@@ -169,7 +166,7 @@ Setup: before the suite, `supabase db reset --linked` (or a fast fixture reset o
 | Riley (multi-group) | Maple: exact Saturday, approximate Weeknight; Riverside: approximate sunrise; RSVP grants nothing elsewhere |
 | Rules | RSVP to cancelled → 409; to started → 409; withdraw on cancelled → ok; double RSVP → one row; past/now start → 400; withdraw with no RSVP → ok |
 | Edge cases (§13) | each row marked *test* in §13 |
-| Contract | direct table write or write RPC from a user session → denied |
+| Contract / D | a user token calling the Data API directly reads and writes nothing; raw SQL as `meetup_api` with each persona's claims returns exactly the rows the API returns (proves RLS, not server code, enforces access); no claims → zero rows |
 | Home privacy | every response scanned for `home_lat/home_lng` keys and the seeded values; `select home_lat` → permission denied for each persona |
 
 ## 9. App (`app/`, Expo Router, Expo Go on phone)
@@ -180,7 +177,7 @@ app/(app)/index.tsx             group picker (my groups) + meetup list, soonest 
 app/(app)/meetups/new.tsx       title, date/time picker, place name, tap map to set point; server errors shown
 app/(app)/meetups/[id].tsx      title, time, status, attendees, map (Circle or Marker), RSVP / Withdraw, Cancel (creator only)
 ```
-- Session in AsyncStorage. `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `EXPO_PUBLIC_API_URL` (laptop LAN IP). Never the secret key.
+- Session in AsyncStorage. `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (sign-in only) and `EXPO_PUBLIC_API_URL` (the Edge Function URL). Never a secret.
 - Refetch on screen focus and after every write, so a stale cache never shows data the user lost access to.
 - No home location anywhere. The map's initial region comes from the meetup itself.
 
@@ -189,9 +186,9 @@ app/(app)/meetups/[id].tsx      title, time, status, attendees, map (Circle or M
 | # | Branch | Contents | Est. |
 |---|---|---|---|
 | 0 | `docs/plan` | this plan | — |
-| 1 | `feat/db-schema` | supabase init + link, starter migration verbatim, schema + RLS + grants + write functions, adapted seed PART 2, advisors clean | 1.5h |
+| 1 | `feat/db-schema` | supabase init + link, verify `meetup_api` pooler login, starter migration verbatim, schema + roles + RLS + triggers, adapted seed PART 2, advisors clean | 2h |
 | 2 | `feat/shared-contract` | pnpm workspace, `packages/shared` Zod schemas | 0.5h |
-| 3 | `feat/write-api` | Hono endpoints, JWT verification, error mapping | 1h |
+| 3 | `feat/api` | Hono read + write endpoints, JWT verification, claims per transaction, error mapping, Edge deploy | 1.5h |
 | 4 | `test/access` | Vitest suite (§8 + §13) | 1.5h |
 | — | `dev` → `main` | **Milestone: Part 1** | |
 | 5 | `feat/app-core` | Expo scaffold, Metro workspace config, sign-in, list, create | 1.5h |
@@ -205,7 +202,7 @@ Before each PR: `security-review`, `code-review`, green tests, Conventional Comm
 ## 11. What you need to do (I can't run browser logins)
 
 1. Create a free Supabase project. Note the project ref and the DB password. Project options:
-   - **Enable Data API: ON.** The app reads with supabase-js under RLS.
+   - **Enable Data API: OFF.** Nothing uses it; Auth keeps working. D doesn't rely on it being off: user roles have no grants either way.
    - **Automatically expose new tables: OFF.** We grant per table and per column in migrations. With it ON, `users` would be granted on *all* columns, `home_lat/home_lng` included, so once a `users` select policy exists the home columns become readable.
    - **Enable automatic RLS: ON.** A safety net: any table we forget gets RLS (deny by default). Our migrations also enable RLS explicitly.
 2. Run `npx supabase login` once in your terminal (browser flow), then `npx supabase link --project-ref <ref>` from the repo root after `feat/db-schema` adds `supabase/config.toml`.
