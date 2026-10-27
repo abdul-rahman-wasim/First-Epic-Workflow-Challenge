@@ -64,7 +64,7 @@ Automated tests proving access for four personas — outsider, member not RSVP'd
 - multi-group case (Riley Chen: both groups, RSVP'd only to "Saturday morning loop") incl. what map data returns per meetup;
 - home location never present in any response;
 - past/now `starts_at` rejected by the server.
-Tests run against a real Supabase (local), signing in as seed users. Reset DB to a known state before the suite.
+Tests run against the real hosted Supabase project (no Docker), signing in as seed users. Reset DB to a known state before the suite.
 
 ## Seed cast (password for all: `altair-fixture-pass`, email `<firstname>@example.test`)
 | Persona | Groups | Role |
