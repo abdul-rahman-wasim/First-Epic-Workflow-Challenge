@@ -7,6 +7,9 @@ A slice of a dog-owner community app: **group meetups** with RSVPs and a map. It
 
 The reasoning, product decision and pushback are in **[NOTE.md](NOTE.md)**; the build plan is in [docs/PLAN.md](docs/PLAN.md).
 
+- **Screen recording:** [walkthrough with voice-over](https://docs.google.com/videos/d/1ylDJkxl9KjrcYTI-Gs-Qcse1QiSZRfd0a7XRooirnb8/play?usp=sharing)
+- **AI session log:** [Google Drive folder](https://drive.google.com/drive/folders/1Tm75tn4lJqZtWgGFXE_LuiEsRS2mNRRh), the Claude Code session transcript as stored by the tool (JSONL), plus its subagent transcripts. It's kept out of the repo because it contains the challenge brief and spec.
+
 ## How it fits together
 
 ```

@@ -1,6 +1,6 @@
 # Note — Altair group meetups slice
 
-Run instructions are in [README.md](README.md). The build plan is in [docs/PLAN.md](docs/PLAN.md).
+Run instructions are in [README.md](README.md). The build plan is in [docs/PLAN.md](docs/PLAN.md). The [screen recording](https://docs.google.com/videos/d/1ylDJkxl9KjrcYTI-Gs-Qcse1QiSZRfd0a7XRooirnb8/play?usp=sharing) and the [AI session log](https://drive.google.com/drive/folders/1Tm75tn4lJqZtWgGFXE_LuiEsRS2mNRRh) complete the submission.
 
 ## Product decision: approximate area until RSVP
 
