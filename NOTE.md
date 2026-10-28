@@ -18,6 +18,8 @@ Members who haven't RSVP'd see an **approximate area**. Members who have RSVP'd,
 
 **Enforcement.** The exact point and place name live in a separate table, `meetup_locations`. Its row-level security returns a row only to a current group member who is the creator or has an RSVP. A member without an RSVP gets no row at all: the data never leaves the database, and nothing is hidden in the app. After RSVP, the app refetches and the row becomes visible. Withdrawing, or leaving the group, removes access again.
 
+**Map states.** The map's data comes with the meetup detail, so its loading and error states are the detail screen's. It has no empty state because none can occur: a deferred trigger rejects any meetup committed without a meeting point, and the response schema requires a location.
+
 ### Known limit: sparse areas, and the proper fix (k-anonymity)
 
 A fixed grid is the same size everywhere. In a dense city, an 800 m cell contains dozens of parks, plazas and library steps, so the circle says little. In a small town, the same cell may contain only one public place, and then "approximate" effectively names the spot. Approximation reduces precision; on its own it can't stop someone from inferring the spot when there are only a few candidates.
